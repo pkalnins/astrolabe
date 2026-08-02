@@ -1,6 +1,8 @@
 "use client";
 
+import { useMemo } from "react";
 import type { PlanetPosition } from "@/lib/astro/positions";
+import { getMoonPhase } from "@/lib/astro/moonPhase";
 import type { ZodiacMode } from "@/lib/hooks/useAstroState";
 import { ZodiacRing } from "./ZodiacRing";
 import { PlanetRing } from "./PlanetRing";
@@ -12,6 +14,7 @@ export interface SkyWheelProps {
   ascendant: number;
   mode: ZodiacMode;
   onModeChange: (mode: ZodiacMode) => void;
+  now: Date;
   size?: number;
 }
 
@@ -35,9 +38,10 @@ const MOON_RING_RADIUS = SUN_RING_RADIUS - 38;
 const PLANETS_CIRCLE_RADIUS = PLANETS_RING_RADIUS * 0.078;
 const LUMINARY_CIRCLE_RADIUS = 14;
 
-export function SkyWheel({ planets, ascendant, mode, onModeChange, size = 720 }: SkyWheelProps) {
+export function SkyWheel({ planets, ascendant, mode, onModeChange, now, size = 720 }: SkyWheelProps) {
   const ascPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 10, 180);
   const dscPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 10, 0);
+  const moonPhase = useMemo(() => getMoonPhase(now), [now]);
 
   const sun = planets.filter((p) => p.body === "Sun");
   const moon = planets.filter((p) => p.body === "Moon");
@@ -102,6 +106,7 @@ export function SkyWheel({ planets, ascendant, mode, onModeChange, size = 720 }:
           ascendant={ascendant}
           planets={moon}
           circleRadius={LUMINARY_CIRCLE_RADIUS}
+          moonPhase={moonPhase}
         />
 
         {/* Horizon line + Asc/Dsc labels. */}

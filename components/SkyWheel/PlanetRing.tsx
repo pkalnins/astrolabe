@@ -1,7 +1,9 @@
 import type { PlanetPosition } from "@/lib/astro/positions";
+import type { MoonPhaseInfo } from "@/lib/astro/moonPhase";
 import { polarToPoint, screenAngle } from "./geometry";
 import { PLANET_GLYPHS, SYMBOL_FONT_FAMILY } from "./glyphs";
 import { isOuterPlanet, OuterPlanetIcon } from "./OuterPlanetIcons";
+import { MoonPhaseIcon } from "./MoonPhaseIcon";
 
 export interface PlanetRingProps {
   cx: number;
@@ -10,6 +12,8 @@ export interface PlanetRingProps {
   ascendant: number;
   planets: PlanetPosition[];
   circleRadius: number;
+  /** Required to draw the Moon as its current phase rather than a glyph. */
+  moonPhase?: MoonPhaseInfo;
 }
 
 const PROGRADE_COLOR = "#60a5fa";
@@ -24,7 +28,7 @@ function colorFor(planet: PlanetPosition): string {
   return PROGRADE_COLOR;
 }
 
-export function PlanetRing({ cx, cy, radius, ascendant, planets, circleRadius }: PlanetRingProps) {
+export function PlanetRing({ cx, cy, radius, ascendant, planets, circleRadius, moonPhase }: PlanetRingProps) {
   return (
     <g>
       {planets.map((planet) => {
@@ -42,7 +46,18 @@ export function PlanetRing({ cx, cy, radius, ascendant, planets, circleRadius }:
               strokeOpacity={planet.retrograde ? 1 : 0.85}
               strokeWidth={planet.retrograde ? 2 : 1.5}
             />
-            {isOuterPlanet(planet.body) ? (
+            {planet.body === "Sun" ? (
+              <circle cx={point.x} cy={point.y} r={circleRadius * 0.42} fill={glyphColor} />
+            ) : planet.body === "Moon" && moonPhase ? (
+              <MoonPhaseIcon
+                x={point.x}
+                y={point.y}
+                radius={circleRadius * 0.8}
+                illuminatedFraction={moonPhase.illuminatedFraction}
+                waxing={moonPhase.angle < 180}
+                litColor={glyphColor}
+              />
+            ) : isOuterPlanet(planet.body) ? (
               <OuterPlanetIcon body={planet.body} x={point.x} y={point.y} scale={circleRadius / 5.5} color={glyphColor} />
             ) : (
               <text

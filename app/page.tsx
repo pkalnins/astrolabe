@@ -29,7 +29,13 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-1 flex-col gap-6 bg-black p-6 text-neutral-100 lg:flex-row lg:items-start">
       <div className="flex flex-1 items-center justify-center">
-        <SkyWheel planets={astro.planets} ascendant={astro.ascendant} mode={astro.mode} onModeChange={astro.setMode} />
+        <SkyWheel
+          planets={astro.planets}
+          ascendant={astro.ascendant}
+          mode={astro.mode}
+          onModeChange={astro.setMode}
+          now={astro.now}
+        />
       </div>
       <div className="w-full lg:w-80">
         <Dashboard locationState={locationState} now={astro.now} />
