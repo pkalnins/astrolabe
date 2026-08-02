@@ -32,6 +32,7 @@ export default function Home() {
         <SkyWheel
           planets={astro.planets}
           ascendant={astro.ascendant}
+          descendant={astro.descendant}
           mode={astro.mode}
           onModeChange={astro.setMode}
           now={astro.now}

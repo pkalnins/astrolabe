@@ -1,4 +1,4 @@
-import type { PlanetPosition } from "@/lib/astro/positions";
+import type { CelestialBody, PlanetPosition } from "@/lib/astro/positions";
 import type { MoonPhaseInfo } from "@/lib/astro/moonPhase";
 import { polarToPoint, screenAngle } from "./geometry";
 import { PLANET_GLYPHS, SYMBOL_FONT_FAMILY } from "./glyphs";
@@ -16,16 +16,24 @@ export interface PlanetRingProps {
   moonPhase?: MoonPhaseInfo;
 }
 
-const PROGRADE_COLOR = "#60a5fa";
-const RETROGRADE_COLOR = "#ef4444";
-const SUN_COLOR = "#fbbf24";
-const MOON_COLOR = "#cbd5e1";
+// Traditional astrological planetary colors.
+const PLANET_COLORS: Record<CelestialBody, string> = {
+  Sun: "#fbbf24",
+  Moon: "#cbd5e1",
+  Mars: "#dc2626",
+  Mercury: "#10b981",
+  Jupiter: "#f97316",
+  Venus: "#fb7185",
+  Saturn: "#1e40af",
+  Uranus: "#22d3ee",
+  Neptune: "#8b5cf6",
+  Pluto: "#7f1d1d",
+};
+const RETROGRADE_STROKE = "#ef4444";
+const GLYPH_COLOR = "#ffffff";
 
 function colorFor(planet: PlanetPosition): string {
-  if (planet.retrograde) return RETROGRADE_COLOR;
-  if (planet.body === "Sun") return SUN_COLOR;
-  if (planet.body === "Moon") return MOON_COLOR;
-  return PROGRADE_COLOR;
+  return PLANET_COLORS[planet.body];
 }
 
 export function PlanetRing({ cx, cy, radius, ascendant, planets, circleRadius, moonPhase }: PlanetRingProps) {
@@ -34,31 +42,37 @@ export function PlanetRing({ cx, cy, radius, ascendant, planets, circleRadius, m
       {planets.map((planet) => {
         const angle = screenAngle(planet.eclipticLongitude, ascendant);
         const point = polarToPoint(cx, cy, radius, angle);
-        const glyphColor = colorFor(planet);
+        const badgeColor = colorFor(planet);
+        if (planet.body === "Sun") {
+          return <circle key={planet.body} cx={point.x} cy={point.y} r={circleRadius} fill={badgeColor} />;
+        }
+
+        if (planet.body === "Moon" && moonPhase) {
+          return (
+            <MoonPhaseIcon
+              key={planet.body}
+              x={point.x}
+              y={point.y}
+              radius={circleRadius}
+              illuminatedFraction={moonPhase.illuminatedFraction}
+              waxing={moonPhase.angle < 180}
+              litColor={badgeColor}
+            />
+          );
+        }
+
         return (
           <g key={planet.body}>
             <circle
               cx={point.x}
               cy={point.y}
               r={circleRadius}
-              fill="var(--wheel-bg, #0a0a12)"
-              stroke={glyphColor}
-              strokeOpacity={planet.retrograde ? 1 : 0.85}
-              strokeWidth={planet.retrograde ? 2 : 1.5}
+              fill={badgeColor}
+              stroke={planet.retrograde ? RETROGRADE_STROKE : "none"}
+              strokeWidth={2}
             />
-            {planet.body === "Sun" ? (
-              <circle cx={point.x} cy={point.y} r={circleRadius * 0.42} fill={glyphColor} />
-            ) : planet.body === "Moon" && moonPhase ? (
-              <MoonPhaseIcon
-                x={point.x}
-                y={point.y}
-                radius={circleRadius * 0.8}
-                illuminatedFraction={moonPhase.illuminatedFraction}
-                waxing={moonPhase.angle < 180}
-                litColor={glyphColor}
-              />
-            ) : isOuterPlanet(planet.body) ? (
-              <OuterPlanetIcon body={planet.body} x={point.x} y={point.y} scale={circleRadius / 5.5} color={glyphColor} />
+            {isOuterPlanet(planet.body) ? (
+              <OuterPlanetIcon body={planet.body} x={point.x} y={point.y} scale={circleRadius / 6.7} color={GLYPH_COLOR} />
             ) : (
               <text
                 x={point.x}
@@ -67,7 +81,7 @@ export function PlanetRing({ cx, cy, radius, ascendant, planets, circleRadius, m
                 dominantBaseline="central"
                 fontSize={circleRadius * 1.3}
                 fontFamily={SYMBOL_FONT_FAMILY}
-                fill={glyphColor}
+                fill={GLYPH_COLOR}
               >
                 {PLANET_GLYPHS[planet.body]}
               </text>

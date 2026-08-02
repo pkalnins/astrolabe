@@ -1,14 +1,16 @@
 "use client";
 
 import { useMemo } from "react";
-import { getSunriseSunset, getMoonriseMoonset } from "@/lib/astro/events";
+import { getSunriseSunset, getMoonriseMoonset, type RiseSetEvent } from "@/lib/astro/events";
 import { getMoonPhase } from "@/lib/astro/moonPhase";
+import { formatAzimuth } from "@/lib/astro/compass";
 import type { GeoLocation } from "@/lib/astro/location";
 import { Card } from "./Card";
 
-function formatTime(date: Date | null): string {
-  if (!date) return "—";
-  return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+function formatEvent(event: RiseSetEvent | null): string {
+  if (!event) return "—";
+  const time = event.time.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${time} (${formatAzimuth(event.azimuth)})`;
 }
 
 export function SunMoonCard({ location, now }: { location: GeoLocation | null; now: Date }) {
@@ -35,13 +37,13 @@ export function SunMoonCard({ location, now }: { location: GeoLocation | null; n
       {times ? (
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <div className="text-neutral-400">Sunrise</div>
-          <div>{formatTime(times.sun.rise)}</div>
+          <div>{formatEvent(times.sun.rise)}</div>
           <div className="text-neutral-400">Sunset</div>
-          <div>{formatTime(times.sun.set)}</div>
+          <div>{formatEvent(times.sun.set)}</div>
           <div className="text-neutral-400">Moonrise</div>
-          <div>{formatTime(times.moon.rise)}</div>
+          <div>{formatEvent(times.moon.rise)}</div>
           <div className="text-neutral-400">Moonset</div>
-          <div>{formatTime(times.moon.set)}</div>
+          <div>{formatEvent(times.moon.set)}</div>
         </div>
       ) : (
         <div className="text-sm text-neutral-400">Waiting for location…</div>

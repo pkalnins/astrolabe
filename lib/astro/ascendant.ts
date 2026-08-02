@@ -7,6 +7,15 @@ export interface AscendantResult {
   ascendant: number;
   /** Tropical ecliptic longitude of the descendant, degrees [0, 360). */
   descendant: number;
+  /**
+   * Compass bearing of the ascendant point on the physical horizon, degrees
+   * clockwise from true north. Unlike the zodiac longitude, this doesn't
+   * change with the tropical/sidereal toggle - it's a fixed direction you
+   * could point a compass at.
+   */
+  ascendantAzimuth: number;
+  /** Compass bearing of the descendant point on the physical horizon. */
+  descendantAzimuth: number;
 }
 
 const SCAN_STEP_DEGREES = 0.1;
@@ -77,7 +86,12 @@ export function getAscendant(date: Date, location: GeoLocation): AscendantResult
   // measured clockwise from north. Descendant is the other crossing.
   const [a, b] = crossings;
   const aAzimuth = azimuthAt(a, time, rotation);
-  const [ascendant, descendant] = aAzimuth > 0 && aAzimuth < 180 ? [a, b] : [b, a];
+  const bAzimuth = azimuthAt(b, time, rotation);
+  const isARising = aAzimuth > 0 && aAzimuth < 180;
+  const ascendant = isARising ? a : b;
+  const descendant = isARising ? b : a;
+  const ascendantAzimuth = isARising ? aAzimuth : bAzimuth;
+  const descendantAzimuth = isARising ? bAzimuth : aAzimuth;
 
-  return { ascendant, descendant };
+  return { ascendant, descendant, ascendantAzimuth, descendantAzimuth };
 }

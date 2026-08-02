@@ -3,29 +3,41 @@
 import { useMemo } from "react";
 import type { PlanetPosition } from "@/lib/astro/positions";
 import { getMoonPhase } from "@/lib/astro/moonPhase";
+import { getRoyalStarPositions } from "@/lib/astro/fixedStars";
+import { toSidereal } from "@/lib/astro/ayanamsa";
+import { getZodiacPosition } from "@/lib/astro/zodiac";
 import type { ZodiacMode } from "@/lib/hooks/useAstroState";
 import { ZodiacRing } from "./ZodiacRing";
 import { PlanetRing } from "./PlanetRing";
+import { RoyalStarsRing } from "./RoyalStarsRing";
 import { polarToPoint } from "./geometry";
 import { SYMBOL_FONT_FAMILY } from "./glyphs";
 
 export interface SkyWheelProps {
   planets: PlanetPosition[];
   ascendant: number;
+  descendant: number;
   mode: ZodiacMode;
   onModeChange: (mode: ZodiacMode) => void;
   now: Date;
   size?: number;
 }
 
-// Extra horizontal margin (beyond the circle itself) so the ASC/DSC labels
-// at 9/3 o'clock have room to render without clipping against the SVG edge.
-const VIEWBOX_W = 530;
-const VIEWBOX_H = 460;
+function formatDegree(longitude: number): string {
+  const { sign, degreeInSign } = getZodiacPosition(longitude);
+  return `${sign.glyph} ${Math.floor(degreeInSign)}°`;
+}
+
+// Extra margin (beyond the zodiac ring itself) so the ASC/DSC labels and the
+// royal-star name labels have room to render without clipping the SVG edge.
+const EXTRA_MARGIN = 110;
+const ZODIAC_OUTER_RADIUS = 218;
+const VIEWBOX_W = ZODIAC_OUTER_RADIUS * 2 + EXTRA_MARGIN * 2 + 12;
+const VIEWBOX_H = ZODIAC_OUTER_RADIUS * 2 + EXTRA_MARGIN * 2;
 const CENTER_X = VIEWBOX_W / 2;
 const CENTER_Y = VIEWBOX_H / 2;
-const ZODIAC_OUTER_RADIUS = CENTER_Y - 12;
 const ZODIAC_INNER_RADIUS = ZODIAC_OUTER_RADIUS - 46;
+const ROYAL_STARS_RING_RADIUS = ZODIAC_OUTER_RADIUS + 18;
 const EARTH_RADIUS = 20;
 
 // Sun and Moon get their own rings (innermost - closest to Earth for the
@@ -35,13 +47,21 @@ const PLANETS_RING_RADIUS = ZODIAC_INNER_RADIUS - 38;
 const SUN_RING_RADIUS = PLANETS_RING_RADIUS - 38;
 const MOON_RING_RADIUS = SUN_RING_RADIUS - 38;
 
+// Same marker size everywhere - Sun/Moon should read as the same size dot/disc
+// as the circle markers on the rest of the planets, not bigger or smaller.
 const PLANETS_CIRCLE_RADIUS = PLANETS_RING_RADIUS * 0.078;
-const LUMINARY_CIRCLE_RADIUS = 14;
+const LUMINARY_CIRCLE_RADIUS = PLANETS_CIRCLE_RADIUS;
 
-export function SkyWheel({ planets, ascendant, mode, onModeChange, now, size = 720 }: SkyWheelProps) {
+export function SkyWheel({ planets, ascendant, descendant, mode, onModeChange, now, size = 820 }: SkyWheelProps) {
   const ascPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 10, 180);
   const dscPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 10, 0);
   const moonPhase = useMemo(() => getMoonPhase(now), [now]);
+
+  const royalStars = useMemo(() => {
+    const tropical = getRoyalStarPositions(now);
+    if (mode === "tropical") return tropical;
+    return tropical.map((star) => ({ ...star, eclipticLongitude: toSidereal(star.eclipticLongitude, now) }));
+  }, [now, mode]);
 
   const sun = planets.filter((p) => p.body === "Sun");
   const moon = planets.filter((p) => p.body === "Moon");
@@ -57,17 +77,23 @@ export function SkyWheel({ planets, ascendant, mode, onModeChange, now, size = 7
         {mode}
       </button>
       <svg width={size} height={(size * VIEWBOX_H) / VIEWBOX_W} viewBox={`0 0 ${VIEWBOX_W} ${VIEWBOX_H}`}>
-        {/* Above-horizon half (currently visible sky), subtly lightened: the
-            horizon is the horizontal line through Ascendant (left) /
-            Descendant (right) once rotated. Against an all-black page,
-            lightening "visible sky" reads better than trying to darken
-            "below horizon" further. */}
+        {/* The horizon is the horizontal line through Ascendant (left) /
+            Descendant (right) once rotated - shown purely via shading rather
+            than a drawn line: lighter above (currently visible sky), darker
+            below. */}
         <path
           d={`M ${CENTER_X - ZODIAC_OUTER_RADIUS} ${CENTER_Y} A ${ZODIAC_OUTER_RADIUS} ${ZODIAC_OUTER_RADIUS} 0 0 1 ${
             CENTER_X + ZODIAC_OUTER_RADIUS
           } ${CENTER_Y} Z`}
           fill="#93c5fd"
-          fillOpacity={0.07}
+          fillOpacity={0.18}
+        />
+        <path
+          d={`M ${CENTER_X - ZODIAC_OUTER_RADIUS} ${CENTER_Y} A ${ZODIAC_OUTER_RADIUS} ${ZODIAC_OUTER_RADIUS} 0 0 0 ${
+            CENTER_X + ZODIAC_OUTER_RADIUS
+          } ${CENTER_Y} Z`}
+          fill="black"
+          fillOpacity={0.35}
         />
 
         <ZodiacRing
@@ -77,6 +103,8 @@ export function SkyWheel({ planets, ascendant, mode, onModeChange, now, size = 7
           outerRadius={ZODIAC_OUTER_RADIUS}
           ascendant={ascendant}
         />
+
+        <RoyalStarsRing cx={CENTER_X} cy={CENTER_Y} radius={ROYAL_STARS_RING_RADIUS} ascendant={ascendant} stars={royalStars} />
 
         {/* Faint guide circles marking each inner ring's path. */}
         {[PLANETS_RING_RADIUS, SUN_RING_RADIUS, MOON_RING_RADIUS].map((r) => (
@@ -109,16 +137,7 @@ export function SkyWheel({ planets, ascendant, mode, onModeChange, now, size = 7
           moonPhase={moonPhase}
         />
 
-        {/* Horizon line + Asc/Dsc labels. */}
-        <line
-          x1={CENTER_X - ZODIAC_OUTER_RADIUS}
-          y1={CENTER_Y}
-          x2={CENTER_X + ZODIAC_OUTER_RADIUS}
-          y2={CENTER_Y}
-          stroke="#fbbf24"
-          strokeOpacity={0.7}
-          strokeDasharray="4 3"
-        />
+        {/* Asc/Dsc labels. */}
         <text
           x={ascPoint.x}
           y={ascPoint.y}
@@ -128,7 +147,12 @@ export function SkyWheel({ planets, ascendant, mode, onModeChange, now, size = 7
           fontFamily={SYMBOL_FONT_FAMILY}
           fill="#fbbf24"
         >
-          ASC
+          <tspan x={ascPoint.x} dy="-2">
+            ASC
+          </tspan>
+          <tspan x={ascPoint.x} dy="15" fontSize={11} fillOpacity={0.8}>
+            {formatDegree(ascendant)}
+          </tspan>
         </text>
         <text
           x={dscPoint.x}
@@ -139,7 +163,12 @@ export function SkyWheel({ planets, ascendant, mode, onModeChange, now, size = 7
           fontFamily={SYMBOL_FONT_FAMILY}
           fill="#fbbf24"
         >
-          DSC
+          <tspan x={dscPoint.x} dy="-2">
+            DSC
+          </tspan>
+          <tspan x={dscPoint.x} dy="15" fontSize={11} fillOpacity={0.8}>
+            {formatDegree(descendant)}
+          </tspan>
         </text>
 
         {/* Earth, at center. */}

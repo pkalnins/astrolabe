@@ -6,3 +6,5 @@ export * from "./ayanamsa";
 export * from "./ascendant";
 export * from "./events";
 export * from "./moonPhase";
+export * from "./fixedStars";
+export * from "./compass";
