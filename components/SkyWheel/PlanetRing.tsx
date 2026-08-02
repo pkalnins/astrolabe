@@ -1,7 +1,7 @@
-import type { CelestialBody, PlanetPosition } from "@/lib/astro/positions";
+import type { PlanetPosition } from "@/lib/astro/positions";
 import type { MoonPhaseInfo } from "@/lib/astro/moonPhase";
 import { polarToPoint, screenAngle } from "./geometry";
-import { PLANET_GLYPHS, SYMBOL_FONT_FAMILY } from "./glyphs";
+import { PLANET_GLYPHS, PLANET_COLORS, SYMBOL_FONT_FAMILY } from "./glyphs";
 import { isOuterPlanet, OuterPlanetIcon } from "./OuterPlanetIcons";
 import { MoonPhaseIcon } from "./MoonPhaseIcon";
 
@@ -16,19 +16,6 @@ export interface PlanetRingProps {
   moonPhase?: MoonPhaseInfo;
 }
 
-// Traditional astrological planetary colors.
-const PLANET_COLORS: Record<CelestialBody, string> = {
-  Sun: "#fbbf24",
-  Moon: "#cbd5e1",
-  Mars: "#dc2626",
-  Mercury: "#10b981",
-  Jupiter: "#f97316",
-  Venus: "#fb7185",
-  Saturn: "#1e40af",
-  Uranus: "#22d3ee",
-  Neptune: "#8b5cf6",
-  Pluto: "#7f1d1d",
-};
 const RETROGRADE_STROKE = "#ef4444";
 const GLYPH_COLOR = "#ffffff";
 

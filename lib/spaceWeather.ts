@@ -1,19 +1,10 @@
 // Plain-language qualifiers (and a severity level for color-coding) for NOAA
 // SWPC space weather metrics, using their published threshold conventions.
 
-export type SeverityLevel = "calm" | "moderate" | "elevated" | "severe";
+import type { MetricDescription } from "./severity";
 
-export const SEVERITY_COLORS: Record<SeverityLevel, string> = {
-  calm: "#4ade80",
-  moderate: "#facc15",
-  elevated: "#fb923c",
-  severe: "#f87171",
-};
-
-export interface MetricDescription {
-  label: string;
-  severity: SeverityLevel;
-}
+export type { SeverityLevel, MetricDescription } from "./severity";
+export { SEVERITY_COLORS } from "./severity";
 
 /** Kp index (0-9) -> NOAA's descriptive geomagnetic activity level, including the G-scale for storms. */
 export function describeKp(kp: number): MetricDescription {

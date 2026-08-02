@@ -10,6 +10,7 @@ export interface WeatherResponse {
   weatherCode: number;
   windSpeedKmh: number;
   windDirectionDeg: number;
+  uvIndex: number;
   observedAt: string;
 }
 
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
   url.searchParams.set("longitude", longitude);
   url.searchParams.set(
     "current",
-    "temperature_2m,relative_humidity_2m,surface_pressure,weather_code,wind_speed_10m,wind_direction_10m",
+    "temperature_2m,relative_humidity_2m,surface_pressure,weather_code,wind_speed_10m,wind_direction_10m,uv_index",
   );
   url.searchParams.set("hourly", "surface_pressure");
   url.searchParams.set("past_days", "1");
@@ -86,6 +87,7 @@ export async function GET(request: NextRequest) {
     weatherCode: current.weather_code,
     windSpeedKmh: current.wind_speed_10m,
     windDirectionDeg: current.wind_direction_10m,
+    uvIndex: current.uv_index,
     observedAt: current.time,
   };
 

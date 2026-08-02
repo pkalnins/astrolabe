@@ -8,3 +8,6 @@ export * from "./events";
 export * from "./moonPhase";
 export * from "./fixedStars";
 export * from "./compass";
+export * from "./moonDistance";
+export * from "./skyEvents";
+export * from "./planetaryHours";
