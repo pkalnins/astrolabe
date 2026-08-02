@@ -8,7 +8,7 @@ export function LocationCard({ location, loading, error, requestGeolocation }: U
     <Card title="Location">
       {location ? (
         <div className="text-sm">
-          {location.label ?? `${location.latitude.toFixed(3)}°, ${location.longitude.toFixed(3)}°`}
+          {location.label || `${location.latitude.toFixed(3)}°, ${location.longitude.toFixed(3)}°`}
         </div>
       ) : loading ? (
         <div className="text-sm text-neutral-400">Locating…</div>

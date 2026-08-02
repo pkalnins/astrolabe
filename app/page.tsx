@@ -39,7 +39,7 @@ export default function Home() {
         />
       </div>
       <div className="w-full lg:w-80">
-        <Dashboard locationState={locationState} now={astro.now} />
+        <Dashboard locationState={locationState} now={astro.now} mode={astro.mode} />
       </div>
     </div>
   );

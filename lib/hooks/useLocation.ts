@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { GeoLocation } from "@/lib/astro/location";
+import type { ReverseGeocodeResponse } from "@/app/api/reverse-geocode/route";
 
 const STORAGE_KEY = "astrolabe:location";
 
 interface StoredLocation extends GeoLocation {
+  /** "" means a reverse-geocode lookup ran and found no city name (so don't retry it). */
   label?: string;
 }
 
@@ -91,6 +93,29 @@ export function useLocation(): UseLocationResult {
     setLocationState(next);
     setError(null);
   }, []);
+
+  // Backfill a city label whenever we have coordinates but haven't looked one
+  // up yet (a fresh geolocation fix, or a location saved before this existed).
+  useEffect(() => {
+    if (!location || location.label !== undefined) return;
+    let cancelled = false;
+
+    fetch(`/api/reverse-geocode?latitude=${location.latitude}&longitude=${location.longitude}`)
+      .then((res) => res.json())
+      .then((data: ReverseGeocodeResponse) => {
+        if (cancelled) return;
+        const next: StoredLocation = { ...location, label: data.label ?? "" };
+        writeStoredLocation(next);
+        setLocationState(next);
+      })
+      .catch(() => {
+        // Non-fatal: the UI just falls back to showing coordinates.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location]);
 
   return { location, loading, error, setLocation, requestGeolocation };
 }
