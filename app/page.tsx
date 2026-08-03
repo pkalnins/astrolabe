@@ -6,11 +6,11 @@ import { useAstroState } from "@/lib/hooks/useAstroState";
 import { SkyWheel } from "@/components/SkyWheel/SkyWheel";
 import { Card } from "@/components/Dashboard/Card";
 import { ClockCard } from "@/components/Dashboard/ClockCard";
-import { PlanetaryHourCard } from "@/components/Dashboard/PlanetaryHourCard";
 import { WeatherCard } from "@/components/Dashboard/WeatherCard";
 import { AspectsCard } from "@/components/Dashboard/AspectsCard";
 import { SunCard } from "@/components/Dashboard/SunCard";
 import { MoonCard } from "@/components/Dashboard/MoonCard";
+import { RhythmCard } from "@/components/Dashboard/RhythmCard";
 
 export default function Home() {
   // Everything here depends on the client's clock/geolocation/localStorage,
@@ -33,33 +33,36 @@ export default function Home() {
   }
 
   return (
-    <div className="flex min-h-screen flex-1 flex-col items-center gap-6 bg-black p-6 text-neutral-100 lg:flex-row lg:items-stretch lg:justify-center">
-      <div className="order-2 flex w-full flex-col gap-4 lg:order-1 lg:w-96">
-        <ClockCard locationState={locationState} />
-        <PlanetaryHourCard location={locationState.location} now={astro.now} />
-        <WeatherCard location={locationState.location} />
-        <div className="lg:flex-1 lg:[&>div]:h-full">
-          <AspectsCard now={astro.now} />
+    <div className="flex min-h-screen flex-1 flex-col items-center gap-6 bg-black p-6 text-neutral-100">
+      <div className="flex w-full flex-1 flex-col items-center gap-6 lg:flex-row lg:items-stretch lg:justify-center">
+        <div className="order-2 flex w-full flex-col gap-3 lg:order-1 lg:w-[28rem]">
+          <ClockCard locationState={locationState} />
+          <WeatherCard location={locationState.location} />
+          <SunCard location={locationState.location} now={astro.now} />
+          <div className="lg:flex-1 lg:[&>div]:h-full">
+            <MoonCard location={locationState.location} now={astro.now} mode={astro.mode} />
+          </div>
         </div>
-      </div>
 
-      <div className="order-1 w-full max-w-[852px] min-w-0 lg:order-2 lg:[&>div]:flex lg:[&>div]:h-full lg:[&>div]:flex-col lg:[&>div]:justify-center">
-        <Card>
-          <SkyWheel
-            planets={astro.planets}
-            ascendant={astro.ascendant}
-            descendant={astro.descendant}
-            mode={astro.mode}
-            onModeChange={astro.setMode}
-            now={astro.now}
-          />
-        </Card>
-      </div>
+        <div className="order-1 w-full max-w-[852px] min-w-0 lg:order-2 lg:[&>div]:flex lg:[&>div]:h-full lg:[&>div]:flex-col lg:[&>div]:justify-center">
+          <Card>
+            <SkyWheel
+              planets={astro.planets}
+              ascendant={astro.ascendant}
+              descendant={astro.descendant}
+              midheaven={astro.midheaven}
+              mode={astro.mode}
+              onModeChange={astro.setMode}
+              now={astro.now}
+            />
+          </Card>
+        </div>
 
-      <div className="order-3 flex w-full flex-col gap-4 lg:w-96">
-        <SunCard location={locationState.location} now={astro.now} />
-        <div className="lg:flex-1 lg:[&>div]:h-full">
-          <MoonCard location={locationState.location} now={astro.now} mode={astro.mode} />
+        <div className="order-3 flex w-full flex-col gap-3 lg:w-72">
+          <AspectsCard now={astro.now} />
+          <div className="lg:flex-1 lg:[&>div]:h-full">
+            <RhythmCard location={locationState.location} now={astro.now} />
+          </div>
         </div>
       </div>
     </div>

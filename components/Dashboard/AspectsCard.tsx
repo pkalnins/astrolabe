@@ -23,7 +23,7 @@ const ASPECT_COLORS: Record<AspectType, string> = {
 function AspectRow({ aspect }: { aspect: Aspect }) {
   return (
     <div className="flex items-baseline gap-2 text-sm">
-      <span style={{ fontFamily: SYMBOL_FONT_FAMILY }}>
+      <span className="text-lg" style={{ fontFamily: SYMBOL_FONT_FAMILY }}>
         <span style={{ color: PLANET_COLORS[aspect.bodyA] }}>{PLANET_GLYPHS[aspect.bodyA]}</span>{" "}
         <span style={{ color: ASPECT_COLORS[aspect.type] }}>{aspect.glyph}</span>{" "}
         <span style={{ color: PLANET_COLORS[aspect.bodyB] }}>{PLANET_GLYPHS[aspect.bodyB]}</span>

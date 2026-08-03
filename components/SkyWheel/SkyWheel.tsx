@@ -1,22 +1,24 @@
 "use client";
 
 import { useMemo } from "react";
-import type { PlanetPosition } from "@/lib/astro/positions";
+import type { CelestialBody, PlanetPosition } from "@/lib/astro/positions";
 import { getMoonPhase } from "@/lib/astro/moonPhase";
-import { getRoyalStarPositions } from "@/lib/astro/fixedStars";
+import { FIXED_STARS, getFixedStarPositions } from "@/lib/astro/fixedStars";
 import { toSidereal } from "@/lib/astro/ayanamsa";
 import { getZodiacPosition } from "@/lib/astro/zodiac";
 import type { ZodiacMode } from "@/lib/hooks/useAstroState";
 import { ZodiacRing } from "./ZodiacRing";
 import { PlanetRing } from "./PlanetRing";
-import { RoyalStarsRing } from "./RoyalStarsRing";
-import { polarToPoint } from "./geometry";
+import { FixedStarsRing } from "./FixedStarsRing";
+import { RadialHands } from "./RadialHands";
+import { polarToPoint, radialTickPath, screenAngle } from "./geometry";
 import { SYMBOL_FONT_FAMILY } from "./glyphs";
 
 export interface SkyWheelProps {
   planets: PlanetPosition[];
   ascendant: number;
   descendant: number;
+  midheaven: number;
   mode: ZodiacMode;
   onModeChange: (mode: ZodiacMode) => void;
   now: Date;
@@ -28,12 +30,14 @@ function formatDegree(longitude: number): string {
   return `${sign.glyph} ${Math.floor(degreeInSign)}°`;
 }
 
-// Extra margin (beyond the zodiac ring itself) so the royal-star name labels
-// (the widest thing that ever renders out there - up to "Fomalhaut", measured
-// via getBBox at ~39 SVG units wide) have room without clipping the SVG edge:
-// ring offset (60) + label gap/marker offset (11.5) + longest label (~39),
-// plus about 13% buffer for font/rendering variance across platforms.
-const EXTRA_MARGIN = 125;
+// Extra margin (beyond the zodiac ring itself) so the fixed-star name labels
+// have room without clipping the SVG edge. Labels are center-anchored on
+// the label ring, so only half of the widest label ("Deneb Algedi", ~55 SVG
+// units wide at fontSize 11) extends past the ring in the worst case (the
+// label sitting due left/right of center): ring offset (60) + label ring gap
+// (26) + half the longest label (~27), plus about 13% buffer for
+// font/rendering variance across platforms.
+const EXTRA_MARGIN = 130;
 const ZODIAC_OUTER_RADIUS = 218;
 const VIEWBOX_W = ZODIAC_OUTER_RADIUS * 2 + EXTRA_MARGIN * 2;
 const VIEWBOX_H = ZODIAC_OUTER_RADIUS * 2 + EXTRA_MARGIN * 2;
@@ -44,35 +48,66 @@ const ZODIAC_INNER_RADIUS = ZODIAC_OUTER_RADIUS - 46;
 // the wheel's rotation periodically brings a star's screen angle right up
 // against 0/180 degrees, where ASC/DSC always sit - too close and the
 // labels collide/run together.
-const ROYAL_STARS_RING_RADIUS = ZODIAC_OUTER_RADIUS + 60;
+const FIXED_STARS_RING_RADIUS = ZODIAC_OUTER_RADIUS + 60;
 const EARTH_RADIUS = 20;
 
-// Sun and Moon get their own rings (innermost - closest to Earth for the
-// Moon, then the Sun, then the rest of the planets) so they stop colliding
-// with whichever planet they happen to be passing through the same sign as.
-const PLANETS_RING_RADIUS = ZODIAC_INNER_RADIUS - 38;
-const SUN_RING_RADIUS = PLANETS_RING_RADIUS - 38;
-const MOON_RING_RADIUS = SUN_RING_RADIUS - 38;
+// Traditional geocentric ("Ptolemaic") ordering - Moon closest to Earth,
+// outward through Saturn, the boundary of naked-eye antiquity. Each of these
+// seven gets its own ring so the wheel reads as a stack of "spheres" rather
+// than a generic planet track. Uranus/Neptune/Pluto aren't part of that
+// ancient model, so they share one additional outer ring instead of each
+// getting a "sphere" the geocentric system never accounted for.
+const GEOCENTRIC_RING_ORDER = ["Moon", "Mercury", "Venus", "Sun", "Mars", "Jupiter", "Saturn"] as const;
+const TRANS_SATURNIAN_BODIES: ReadonlySet<CelestialBody> = new Set(["Uranus", "Neptune", "Pluto"]);
 
-// Same marker size everywhere - Sun/Moon should read as the same size dot/disc
-// as the circle markers on the rest of the planets, not bigger or smaller.
-const PLANETS_CIRCLE_RADIUS = PLANETS_RING_RADIUS * 0.078;
-const LUMINARY_CIRCLE_RADIUS = PLANETS_CIRCLE_RADIUS;
+// Evenly spaced from the zodiac ring down to Earth: one ring per classical
+// body plus one for the trans-Saturnian group, with a matching gap left
+// between the innermost ring (Moon) and Earth itself.
+const INNER_RING_GAP = (ZODIAC_INNER_RADIUS - EARTH_RADIUS) / (GEOCENTRIC_RING_ORDER.length + 2);
+const TRANS_SATURNIAN_RING_RADIUS = ZODIAC_INNER_RADIUS - INNER_RING_GAP;
+const SATURN_RING_RADIUS = TRANS_SATURNIAN_RING_RADIUS - INNER_RING_GAP;
+const JUPITER_RING_RADIUS = SATURN_RING_RADIUS - INNER_RING_GAP;
+const MARS_RING_RADIUS = JUPITER_RING_RADIUS - INNER_RING_GAP;
+const SUN_RING_RADIUS = MARS_RING_RADIUS - INNER_RING_GAP;
+const VENUS_RING_RADIUS = SUN_RING_RADIUS - INNER_RING_GAP;
+const MERCURY_RING_RADIUS = VENUS_RING_RADIUS - INNER_RING_GAP;
+const MOON_RING_RADIUS = MERCURY_RING_RADIUS - INNER_RING_GAP; // == EARTH_RADIUS + INNER_RING_GAP, by construction
 
-export function SkyWheel({ planets, ascendant, descendant, mode, onModeChange, now, size = 820 }: SkyWheelProps) {
+const RING_RADIUS_BY_BODY: Record<(typeof GEOCENTRIC_RING_ORDER)[number], number> = {
+  Moon: MOON_RING_RADIUS,
+  Mercury: MERCURY_RING_RADIUS,
+  Venus: VENUS_RING_RADIUS,
+  Sun: SUN_RING_RADIUS,
+  Mars: MARS_RING_RADIUS,
+  Jupiter: JUPITER_RING_RADIUS,
+  Saturn: SATURN_RING_RADIUS,
+};
+
+// Same marker size everywhere, shared across all rings rather than scaled
+// off any one ring's radius - small enough that adjacent rings' markers
+// don't touch even when two bodies land at the same longitude.
+const PLANET_MARKER_RADIUS = 7.5;
+
+export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onModeChange, now, size = 820 }: SkyWheelProps) {
   const ascPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 10, 180);
   const dscPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 10, 0);
+  // Unlike ASC/DSC, MC isn't pinned to a fixed screen angle - its angular
+  // distance from the ascendant varies with latitude and time of day. A
+  // small tick right on the ring marks its exact degree, so the label
+  // itself can sit a bit closer in without losing precision.
+  const mcAngle = screenAngle(midheaven, ascendant);
+  const mcPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 6, mcAngle);
   const moonPhase = useMemo(() => getMoonPhase(now), [now]);
 
-  const royalStars = useMemo(() => {
-    const tropical = getRoyalStarPositions(now);
+  const fixedStars = useMemo(() => {
+    const tropical = getFixedStarPositions(now, FIXED_STARS);
     if (mode === "tropical") return tropical;
     return tropical.map((star) => ({ ...star, eclipticLongitude: toSidereal(star.eclipticLongitude, now) }));
   }, [now, mode]);
 
   const sun = planets.filter((p) => p.body === "Sun");
   const moon = planets.filter((p) => p.body === "Moon");
-  const rest = planets.filter((p) => p.body !== "Sun" && p.body !== "Moon");
+  const transSaturnian = planets.filter((p) => TRANS_SATURNIAN_BODIES.has(p.body));
 
   return (
     <div
@@ -117,43 +152,47 @@ export function SkyWheel({ planets, ascendant, descendant, mode, onModeChange, n
         <circle
           cx={CENTER_X}
           cy={CENTER_Y}
-          r={ROYAL_STARS_RING_RADIUS}
+          r={FIXED_STARS_RING_RADIUS}
           fill="none"
           stroke="currentColor"
           strokeOpacity={0.15}
         />
-        <RoyalStarsRing cx={CENTER_X} cy={CENTER_Y} radius={ROYAL_STARS_RING_RADIUS} ascendant={ascendant} stars={royalStars} />
+        <FixedStarsRing cx={CENTER_X} cy={CENTER_Y} radius={FIXED_STARS_RING_RADIUS} ascendant={ascendant} stars={fixedStars} />
+
+        {/* Sun/Moon "clock hands" - a thin line from Earth out to the
+            zodiac ring, with a small circle where each meets the ring. */}
+        <RadialHands cx={CENTER_X} cy={CENTER_Y} radius={ZODIAC_INNER_RADIUS} ascendant={ascendant} planets={[...sun, ...moon]} />
 
         {/* Faint guide circles marking each inner ring's path. */}
-        {[PLANETS_RING_RADIUS, SUN_RING_RADIUS, MOON_RING_RADIUS].map((r) => (
+        {[TRANS_SATURNIAN_RING_RADIUS, ...Object.values(RING_RADIUS_BY_BODY)].map((r) => (
           <circle key={r} cx={CENTER_X} cy={CENTER_Y} r={r} fill="none" stroke="currentColor" strokeOpacity={0.15} />
         ))}
 
         <PlanetRing
           cx={CENTER_X}
           cy={CENTER_Y}
-          radius={PLANETS_RING_RADIUS}
+          radius={TRANS_SATURNIAN_RING_RADIUS}
           ascendant={ascendant}
-          planets={rest}
-          circleRadius={PLANETS_CIRCLE_RADIUS}
+          planets={transSaturnian}
+          circleRadius={PLANET_MARKER_RADIUS}
         />
-        <PlanetRing
-          cx={CENTER_X}
-          cy={CENTER_Y}
-          radius={SUN_RING_RADIUS}
-          ascendant={ascendant}
-          planets={sun}
-          circleRadius={LUMINARY_CIRCLE_RADIUS}
-        />
-        <PlanetRing
-          cx={CENTER_X}
-          cy={CENTER_Y}
-          radius={MOON_RING_RADIUS}
-          ascendant={ascendant}
-          planets={moon}
-          circleRadius={LUMINARY_CIRCLE_RADIUS}
-          moonPhase={moonPhase}
-        />
+        {GEOCENTRIC_RING_ORDER.map((body) => (
+          <PlanetRing
+            key={body}
+            cx={CENTER_X}
+            cy={CENTER_Y}
+            radius={RING_RADIUS_BY_BODY[body]}
+            ascendant={ascendant}
+            planets={planets.filter((p) => p.body === body)}
+            circleRadius={PLANET_MARKER_RADIUS}
+            moonPhase={body === "Moon" ? moonPhase : undefined}
+          />
+        ))}
+
+        {/* Small ticks right on the ring marking ASC/DSC's exact degree,
+            matching the one added for MC below. */}
+        <path d={radialTickPath(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS, ZODIAC_OUTER_RADIUS + 8, 180)} stroke="#fbbf24" strokeWidth={1.5} />
+        <path d={radialTickPath(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS, ZODIAC_OUTER_RADIUS + 8, 0)} stroke="#fbbf24" strokeWidth={1.5} />
 
         {/* Asc/Dsc labels. */}
         <text
@@ -186,6 +225,29 @@ export function SkyWheel({ planets, ascendant, descendant, mode, onModeChange, n
           </tspan>
           <tspan x={dscPoint.x} dy="15" fontSize={11} fillOpacity={0.8}>
             {formatDegree(descendant)}
+          </tspan>
+        </text>
+        {/* Same tick treatment for MC. */}
+        <path d={radialTickPath(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS, ZODIAC_OUTER_RADIUS + 8, mcAngle)} stroke="#fbbf24" strokeWidth={1.5} />
+        <text
+          x={mcPoint.x}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontFamily={SYMBOL_FONT_FAMILY}
+          fill="#fbbf24"
+        >
+          {/* Unlike ASC/DSC (always pinned to the sides, where vertical
+              stacking never dips back toward the ring), MC can land
+              anywhere around the circle - including due north/south, where
+              a fixed "always stack downward" layout would push one line
+              back across the ring boundary. Grow both lines away from
+              center instead: downward when MC is in the lower half, upward
+              when it's in the upper half. */}
+          <tspan x={mcPoint.x} y={mcPoint.y + (mcPoint.y < CENTER_Y ? -7 : 7)} fontSize={13}>
+            MC
+          </tspan>
+          <tspan x={mcPoint.x} y={mcPoint.y + (mcPoint.y < CENTER_Y ? -18 : 18)} fontSize={11} fillOpacity={0.8}>
+            {formatDegree(midheaven)}
           </tspan>
         </text>
 

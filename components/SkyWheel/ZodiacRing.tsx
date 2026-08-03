@@ -10,12 +10,18 @@ export interface ZodiacRingProps {
   ascendant: number;
 }
 
+const FINE_TICK_STEP = 2.5;
 const MINOR_TICK_STEP = 5;
 const DECAN_TICK_STEP = 10;
 
 export function ZodiacRing({ cx, cy, innerRadius, outerRadius, ascendant }: ZodiacRingProps) {
   const glyphRadius = (innerRadius + outerRadius) / 2;
-  const tickInnerRadius = outerRadius - (outerRadius - innerRadius) * 0.22;
+  const bandThickness = outerRadius - innerRadius;
+  // Ticks grow outward from the inner edge of the ring, longest/darkest for
+  // decan boundaries down to shortest/faintest for the 2.5 degree divisions.
+  const decanTickRadius = innerRadius + bandThickness * 0.22;
+  const minorTickRadius = innerRadius + bandThickness * 0.13;
+  const fineTickRadius = innerRadius + bandThickness * 0.07;
 
   return (
     <g>
@@ -33,17 +39,21 @@ export function ZodiacRing({ cx, cy, innerRadius, outerRadius, ascendant }: Zodi
               fillOpacity={0.16}
               stroke="none"
             />
-            {/* Minor/decan tick marks every 5 degrees within the sign. */}
-            {Array.from({ length: 30 / MINOR_TICK_STEP - 1 }, (_, i) => (i + 1) * MINOR_TICK_STEP).map((offset) => {
+            {/* Tick marks every 2.5 degrees within the sign, graduated by
+                significance: decan boundaries (10deg), minor (5deg), and
+                fine (2.5deg) divisions. */}
+            {Array.from({ length: 30 / FINE_TICK_STEP - 1 }, (_, i) => (i + 1) * FINE_TICK_STEP).map((offset) => {
               const isDecan = offset % DECAN_TICK_STEP === 0;
+              const isMinor = !isDecan && offset % MINOR_TICK_STEP === 0;
+              const tickRadius = isDecan ? decanTickRadius : isMinor ? minorTickRadius : fineTickRadius;
               const tickAngle = screenAngle(sign.startLongitude + offset, ascendant);
               return (
                 <path
                   key={offset}
-                  d={radialTickPath(cx, cy, isDecan ? tickInnerRadius : (tickInnerRadius + outerRadius) / 2, outerRadius, tickAngle)}
+                  d={radialTickPath(cx, cy, innerRadius, tickRadius, tickAngle)}
                   stroke="currentColor"
-                  strokeOpacity={isDecan ? 0.55 : 0.3}
-                  strokeWidth={isDecan ? 1.25 : 0.75}
+                  strokeOpacity={isDecan ? 0.55 : isMinor ? 0.3 : 0.18}
+                  strokeWidth={isDecan ? 1.25 : isMinor ? 0.75 : 0.5}
                 />
               );
             })}

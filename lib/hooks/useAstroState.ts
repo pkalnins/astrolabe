@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getAllPlanetPositions, type PlanetPosition } from "@/lib/astro/positions";
 import { getAscendant } from "@/lib/astro/ascendant";
+import { getMidheaven } from "@/lib/astro/midheaven";
 import { toSidereal } from "@/lib/astro/ayanamsa";
 import type { GeoLocation } from "@/lib/astro/location";
 
@@ -15,6 +16,7 @@ export interface AstroState {
   planets: PlanetPosition[];
   ascendant: number;
   descendant: number;
+  midheaven: number;
 }
 
 const REFRESH_MS = 60_000;
@@ -49,5 +51,11 @@ export function useAstroState(location: GeoLocation | null): AstroState {
     };
   }, [location, now, mode]);
 
-  return { now, mode, setMode, planets, ascendant, descendant };
+  const midheaven = useMemo(() => {
+    if (!location) return 90;
+    const tropical = getMidheaven(now, location).midheaven;
+    return mode === "tropical" ? tropical : toSidereal(tropical, now);
+  }, [location, now, mode]);
+
+  return { now, mode, setMode, planets, ascendant, descendant, midheaven };
 }

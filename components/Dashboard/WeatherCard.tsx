@@ -8,7 +8,9 @@ import { compassPointFor } from "@/lib/astro/compass";
 import { describeUvIndex } from "@/lib/uvIndex";
 import { describeAqi } from "@/lib/airQuality";
 import { describeWeatherCode } from "@/lib/weatherCode";
-import { MetricRow } from "./MetricRow";
+import { describeTemperatureComfort } from "@/lib/temperatureComfort";
+import { MetricRow, ValueWithUnit } from "./MetricRow";
+import { TemperatureSlider } from "./TemperatureSlider";
 import { Card } from "./Card";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -37,15 +39,28 @@ export function WeatherCard({ location }: { location: GeoLocation | null }) {
         <div className="text-sm text-neutral-400">Loading…</div>
       ) : (
         <>
-          <div className="mb-2 flex items-center gap-2 text-sm">
+          <div className="mb-1.5 flex items-center gap-2 text-sm">
             <span className="text-lg leading-none">{describeWeatherCode(data.weatherCode).icon}</span>
             <span>{describeWeatherCode(data.weatherCode).label}</span>
           </div>
-          <div className="grid grid-cols-[auto_auto_1fr] items-baseline gap-x-2 gap-y-1 text-sm">
-            <MetricRow name="Temperature" value={`${Math.round(data.temperatureF)}°F`} />
-            <MetricRow name="Humidity" value={`${data.humidityPercent}%`} />
-            <MetricRow name="Pressure" value={`${data.pressureHpa.toFixed(1)} hPa`} note={PRESSURE_TREND_ARROW[data.pressureTrend]} />
-            <MetricRow name="Wind" value={`${data.windSpeedKmh.toFixed(0)} km/h`} note={compassPointFor(data.windDirectionDeg)} />
+          <TemperatureSlider low={data.temperatureLowF} high={data.temperatureHighF} current={data.temperatureF} />
+          <div className="grid grid-cols-[auto_auto_1fr] items-baseline gap-x-2 gap-y-0.5 text-sm">
+            <MetricRow
+              name="Temperature"
+              value={<ValueWithUnit value={`${Math.round(data.temperatureF)}`} unit="°F" spaced={false} />}
+              description={describeTemperatureComfort(data.temperatureF)}
+            />
+            <MetricRow name="Humidity" value={<ValueWithUnit value={`${data.humidityPercent}`} unit="%" spaced={false} />} />
+            <MetricRow
+              name="Pressure"
+              value={<ValueWithUnit value={data.pressureHpa.toFixed(1)} unit="hPa" />}
+              note={PRESSURE_TREND_ARROW[data.pressureTrend]}
+            />
+            <MetricRow
+              name="Wind"
+              value={<ValueWithUnit value={data.windSpeedKmh.toFixed(0)} unit="km/h" />}
+              note={compassPointFor(data.windDirectionDeg)}
+            />
             <MetricRow name="UV Index" value={data.uvIndex.toFixed(1)} description={describeUvIndex(data.uvIndex)} />
             <MetricRow
               name="Air Quality"

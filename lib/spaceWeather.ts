@@ -33,10 +33,10 @@ export function describeSolarWindSpeed(speedKmS: number): MetricDescription {
  * activity increases the more negative it gets.
  */
 export function describeBz(bz: number): MetricDescription {
-  if (bz >= 0) return { label: "Northward (quiet)", severity: "calm" };
-  if (bz >= -5) return { label: "Southward (mild)", severity: "moderate" };
-  if (bz >= -10) return { label: "Southward (active)", severity: "elevated" };
-  return { label: "Southward (strong)", severity: "severe" };
+  if (bz >= 0) return { label: "N (quiet)", severity: "calm" };
+  if (bz >= -5) return { label: "S (mild)", severity: "moderate" };
+  if (bz >= -10) return { label: "S (active)", severity: "elevated" };
+  return { label: "S (strong)", severity: "severe" };
 }
 
 /** X-ray flare class letter (A < B < C < M < X, each 10x the previous) -> plain-language rarity/impact. */

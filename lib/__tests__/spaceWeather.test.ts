@@ -27,14 +27,14 @@ describe("describeSolarWindSpeed", () => {
 
 describe("describeBz", () => {
   it("treats any northward value as quiet regardless of magnitude", () => {
-    expect(describeBz(0)).toEqual({ label: "Northward (quiet)", severity: "calm" });
-    expect(describeBz(15)).toEqual({ label: "Northward (quiet)", severity: "calm" });
+    expect(describeBz(0)).toEqual({ label: "N (quiet)", severity: "calm" });
+    expect(describeBz(15)).toEqual({ label: "N (quiet)", severity: "calm" });
   });
 
   it("tiers southward values by increasing severity", () => {
-    expect(describeBz(-2)).toEqual({ label: "Southward (mild)", severity: "moderate" });
-    expect(describeBz(-7)).toEqual({ label: "Southward (active)", severity: "elevated" });
-    expect(describeBz(-12)).toEqual({ label: "Southward (strong)", severity: "severe" });
+    expect(describeBz(-2)).toEqual({ label: "S (mild)", severity: "moderate" });
+    expect(describeBz(-7)).toEqual({ label: "S (active)", severity: "elevated" });
+    expect(describeBz(-12)).toEqual({ label: "S (strong)", severity: "severe" });
   });
 });
 

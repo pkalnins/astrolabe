@@ -2,28 +2,20 @@
 
 import { useMemo } from "react";
 import useSWR from "swr";
-import { getSunriseSunset } from "@/lib/astro/events";
 import { getNextSeason } from "@/lib/astro/skyEvents";
-import { formatAzimuth } from "@/lib/astro/compass";
 import { describeKp, describeSolarWindSpeed, describeBz, describeFlareClass } from "@/lib/spaceWeather";
 import { describeAuroraChance } from "@/lib/aurora";
 import type { GeoLocation } from "@/lib/astro/location";
 import type { SpaceWeatherResponse } from "@/app/api/space-weather/route";
 import type { AuroraResponse } from "@/app/api/aurora/route";
 import { formatUpcomingEvent } from "./eventFormat";
-import { MetricRow } from "./MetricRow";
+import { MetricRow, ValueWithUnit } from "./MetricRow";
 import { Card } from "./Card";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 const REFRESH_MS = 10 * 60 * 1000;
 
 export function SunCard({ location, now }: { location: GeoLocation | null; now: Date }) {
-  const dayKey = now.toDateString();
-  const sunTimes = useMemo(
-    () => (location ? getSunriseSunset(now, location) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [location?.latitude, location?.longitude, dayKey],
-  );
   const season = useMemo(() => getNextSeason(now), [now]);
 
   const { data: spaceWeather } = useSWR<SpaceWeatherResponse>("/api/space-weather", fetcher, { refreshInterval: REFRESH_MS });
@@ -34,29 +26,12 @@ export function SunCard({ location, now }: { location: GeoLocation | null; now: 
 
   return (
     <Card title="Sun">
-      <div className="grid grid-cols-[auto_auto_1fr] items-baseline gap-x-2 gap-y-1 text-sm">
-        {sunTimes ? (
-          <>
-            <MetricRow
-              name="Sunrise"
-              value={sunTimes.rise ? sunTimes.rise.time.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : "—"}
-              note={sunTimes.rise ? formatAzimuth(sunTimes.rise.azimuth) : undefined}
-            />
-            <MetricRow
-              name="Sunset"
-              value={sunTimes.set ? sunTimes.set.time.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : "—"}
-              note={sunTimes.set ? formatAzimuth(sunTimes.set.azimuth) : undefined}
-            />
-          </>
-        ) : (
-          <div className="col-span-3 text-neutral-400">Waiting for location…</div>
-        )}
-
+      <div className="grid grid-cols-[auto_auto_1fr] items-baseline gap-x-2 gap-y-0.5 text-sm">
         {spaceWeather ? (
           <>
             <MetricRow
               name="Solar wind"
-              value={spaceWeather.solarWindSpeedKmS ? `${Math.round(spaceWeather.solarWindSpeedKmS)} km/s` : "—"}
+              value={spaceWeather.solarWindSpeedKmS ? <ValueWithUnit value={`${Math.round(spaceWeather.solarWindSpeedKmS)}`} unit="km/s" /> : "—"}
               description={spaceWeather.solarWindSpeedKmS ? describeSolarWindSpeed(spaceWeather.solarWindSpeedKmS) : undefined}
             />
             <MetricRow
@@ -66,7 +41,7 @@ export function SunCard({ location, now }: { location: GeoLocation | null; now: 
             />
             <MetricRow
               name="IMF Bz"
-              value={spaceWeather.magFieldBz !== null ? `${spaceWeather.magFieldBz} nT` : "—"}
+              value={spaceWeather.magFieldBz !== null ? <ValueWithUnit value={`${spaceWeather.magFieldBz}`} unit="nT" /> : "—"}
               description={spaceWeather.magFieldBz !== null ? describeBz(spaceWeather.magFieldBz) : undefined}
             />
             <MetricRow
@@ -76,7 +51,7 @@ export function SunCard({ location, now }: { location: GeoLocation | null; now: 
             />
             <MetricRow
               name="Aurora chance"
-              value={aurora ? `${Math.round(aurora.probabilityPercent)}%` : "—"}
+              value={aurora ? <ValueWithUnit value={`${Math.round(aurora.probabilityPercent)}`} unit="%" spaced={false} /> : "—"}
               description={aurora ? describeAuroraChance(aurora.probabilityPercent) : undefined}
             />
           </>

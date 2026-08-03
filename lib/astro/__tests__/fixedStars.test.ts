@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { getRoyalStarPositions, ROYAL_STARS } from "../fixedStars";
+import {
+  BEHENIAN_STARS,
+  FIXED_STARS,
+  getBehenianStarPositions,
+  getFixedStarPositions,
+  getRoyalStarPositions,
+  ROYAL_STARS,
+} from "../fixedStars";
 import { signedDelta } from "../math";
 
 describe("getRoyalStarPositions", () => {
@@ -33,5 +40,52 @@ describe("getRoyalStarPositions", () => {
       expect(drift).toBeGreaterThan(0.05);
       expect(drift).toBeLessThan(0.5);
     }
+  });
+});
+
+describe("star catalog", () => {
+  it("has 4 royal stars and 15 behenian stars, overlapping on Aldebaran, Regulus, and Antares", () => {
+    expect(ROYAL_STARS).toHaveLength(4);
+    expect(BEHENIAN_STARS).toHaveLength(15);
+    const behenianNames = new Set(BEHENIAN_STARS.map((s) => s.name));
+    for (const name of ["Aldebaran", "Regulus", "Antares"]) {
+      expect(behenianNames.has(name)).toBe(true);
+    }
+    expect(behenianNames.has("Fomalhaut")).toBe(false);
+  });
+});
+
+describe("getFixedStarPositions", () => {
+  it("returns one well-formed position per catalogued star, covering more than astronomy-engine's 8 star slots", () => {
+    expect(FIXED_STARS.length).toBeGreaterThan(8);
+    const positions = getFixedStarPositions(new Date(Date.UTC(2024, 0, 1)), FIXED_STARS);
+    expect(positions.map((p) => p.name)).toEqual(FIXED_STARS.map((s) => s.name));
+    for (const p of positions) {
+      expect(p.eclipticLongitude).toBeGreaterThanOrEqual(0);
+      expect(p.eclipticLongitude).toBeLessThan(360);
+      expect(Number.isFinite(p.eclipticLatitude)).toBe(true);
+    }
+  });
+
+  it("doesn't leak one star's position into the next when reusing the scratch slot", () => {
+    // Sirius and Fomalhaut sit in very different parts of the sky; computing
+    // them back-to-back through the same underlying astronomy-engine star
+    // slot must produce the same results regardless of order.
+    const sirius = FIXED_STARS.find((s) => s.name === "Sirius")!;
+    const fomalhaut = FIXED_STARS.find((s) => s.name === "Fomalhaut")!;
+    const date = new Date(Date.UTC(2024, 0, 1));
+
+    const [siriusFirst, fomalhautSecond] = getFixedStarPositions(date, [sirius, fomalhaut]);
+    const [fomalhautFirst, siriusSecond] = getFixedStarPositions(date, [fomalhaut, sirius]);
+
+    expect(siriusFirst.eclipticLongitude).toBeCloseTo(siriusSecond.eclipticLongitude, 9);
+    expect(fomalhautSecond.eclipticLongitude).toBeCloseTo(fomalhautFirst.eclipticLongitude, 9);
+  });
+});
+
+describe("getBehenianStarPositions", () => {
+  it("returns one position per behenian star", () => {
+    const positions = getBehenianStarPositions(new Date(Date.UTC(2024, 0, 1)));
+    expect(positions.map((p) => p.name)).toEqual(BEHENIAN_STARS.map((s) => s.name));
   });
 });

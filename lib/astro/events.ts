@@ -39,3 +39,16 @@ export function getSunriseSunset(date: Date, location: GeoLocation): RiseSetTime
 export function getMoonriseMoonset(date: Date, location: GeoLocation): RiseSetTimes {
   return riseSet(Astronomy.Body.Moon, date, location);
 }
+
+/**
+ * Midnight, local time, on the given date's calendar day. Anchoring a
+ * rise/set query here (rather than at the current moment) means the result
+ * is always "today's" rise and set - stable throughout the day - rather
+ * than "the next rise" and "the next set" from right now, which can land on
+ * different calendar days from each other once today's occurrence of one of
+ * them has already passed (e.g. checking mid-afternoon would otherwise show
+ * tomorrow's sunrise paired with today's sunset).
+ */
+export function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}

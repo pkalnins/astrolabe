@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getSunriseSunset, getMoonriseMoonset } from "../events";
+import { getSunriseSunset, getMoonriseMoonset, startOfLocalDay } from "../events";
 import type { GeoLocation } from "../location";
 
 const NYC: GeoLocation = { latitude: 40.7128, longitude: -74.006, elevation: 10 };
@@ -33,6 +33,19 @@ describe("getSunriseSunset", () => {
     expect(rise!.azimuth).toBeLessThan(90);
     expect(set!.azimuth).toBeGreaterThan(270);
     expect(set!.azimuth).toBeLessThan(315);
+  });
+});
+
+describe("startOfLocalDay", () => {
+  it("zeroes the time while keeping the same local calendar day", () => {
+    const evening = new Date(2024, 5, 15, 23, 45, 30);
+    const midnight = startOfLocalDay(evening);
+    expect(midnight.getFullYear()).toBe(2024);
+    expect(midnight.getMonth()).toBe(5);
+    expect(midnight.getDate()).toBe(15);
+    expect(midnight.getHours()).toBe(0);
+    expect(midnight.getMinutes()).toBe(0);
+    expect(midnight.getSeconds()).toBe(0);
   });
 });
 

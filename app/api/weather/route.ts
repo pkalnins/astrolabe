@@ -4,6 +4,8 @@ export type PressureTrend = "rising" | "falling" | "steady";
 
 export interface WeatherResponse {
   temperatureF: number;
+  temperatureHighF: number;
+  temperatureLowF: number;
   humidityPercent: number;
   pressureHpa: number;
   pressureTrend: PressureTrend;
@@ -46,6 +48,16 @@ function getPressureTrend(currentPressure: number, currentTimeMs: number, hourly
   return "steady";
 }
 
+// `daily` covers both yesterday and today (since `past_days=1`), so find
+// today's entry by date rather than assuming an index - matched against the
+// current reading's own date rather than the server's clock, since that's
+// the date Open-Meteo itself considers "today" for this response.
+function findTodayIndex(dailyDates: string[], currentTimeIso: string): number {
+  const todayDate = currentTimeIso.slice(0, 10);
+  const index = dailyDates.indexOf(todayDate);
+  return index >= 0 ? index : dailyDates.length - 1;
+}
+
 export async function GET(request: NextRequest) {
   const latitude = request.nextUrl.searchParams.get("latitude");
   const longitude = request.nextUrl.searchParams.get("longitude");
@@ -62,6 +74,7 @@ export async function GET(request: NextRequest) {
     "temperature_2m,relative_humidity_2m,surface_pressure,weather_code,wind_speed_10m,wind_direction_10m,uv_index",
   );
   url.searchParams.set("hourly", "surface_pressure");
+  url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min");
   url.searchParams.set("past_days", "1");
   url.searchParams.set("forecast_days", "1");
   url.searchParams.set("temperature_unit", "fahrenheit");
@@ -73,9 +86,12 @@ export async function GET(request: NextRequest) {
 
   const data = await upstream.json();
   const current = data.current;
+  const todayIndex = findTodayIndex(data.daily.time, current.time);
 
   const result: WeatherResponse = {
     temperatureF: current.temperature_2m,
+    temperatureHighF: data.daily.temperature_2m_max[todayIndex],
+    temperatureLowF: data.daily.temperature_2m_min[todayIndex],
     humidityPercent: current.relative_humidity_2m,
     pressureHpa: current.surface_pressure,
     pressureTrend: getPressureTrend(

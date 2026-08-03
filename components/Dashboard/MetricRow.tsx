@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { SEVERITY_COLORS, type MetricDescription } from "@/lib/severity";
 
 /**
@@ -24,15 +25,31 @@ export function MetricRow({
   note,
 }: {
   name: string;
-  value: string;
+  value: ReactNode;
   description?: MetricDescription;
   note?: string;
 }) {
   return (
     <>
-      <div className="text-neutral-400">{name}</div>
-      <div style={description ? { color: SEVERITY_COLORS[description.severity] } : undefined}>{value}</div>
+      <div className="text-neutral-400 whitespace-nowrap">{name}</div>
+      <div className="whitespace-nowrap" style={description ? { color: SEVERITY_COLORS[description.severity] } : undefined}>
+        {value}
+      </div>
       <div className="text-xs text-neutral-400">{description?.label ?? note}</div>
+    </>
+  );
+}
+
+/** A value with a unit suffix (e.g. "1013.2 hPa", or "45%" with `spaced`
+ * false) - the unit rendered smaller and muted so it doesn't compete with
+ * the number for attention or width, on the same line rather than wrapping
+ * under it. */
+export function ValueWithUnit({ value, unit, spaced = true }: { value: string; unit: string; spaced?: boolean }) {
+  return (
+    <>
+      {value}
+      {spaced ? " " : ""}
+      <span className="text-xs text-neutral-500">{unit}</span>
     </>
   );
 }
