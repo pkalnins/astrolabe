@@ -11,3 +11,4 @@ export * from "./compass";
 export * from "./moonDistance";
 export * from "./skyEvents";
 export * from "./planetaryHours";
+export * from "./aspects";

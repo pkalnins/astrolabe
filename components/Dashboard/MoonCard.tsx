@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, useMemo } from "react";
-import { getMoonriseMoonset, type RiseSetEvent } from "@/lib/astro/events";
+import { useMemo } from "react";
+import { getMoonriseMoonset } from "@/lib/astro/events";
 import { getMoonPhase } from "@/lib/astro/moonPhase";
 import { getMoonDistance } from "@/lib/astro/moonDistance";
 import { getPlanetPosition } from "@/lib/astro/positions";
@@ -13,20 +13,11 @@ import type { GeoLocation } from "@/lib/astro/location";
 import type { ZodiacMode } from "@/lib/hooks/useAstroState";
 import { ELEMENT_COLORS, SYMBOL_FONT_FAMILY } from "@/components/SkyWheel/glyphs";
 import { formatUpcomingEvent } from "./eventFormat";
+import { MetricRow } from "./MetricRow";
 import { Card } from "./Card";
 
 function capitalize(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
-}
-
-function EventTime({ event }: { event: RiseSetEvent | null }) {
-  if (!event) return <>—</>;
-  const time = event.time.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return (
-    <>
-      {time} <span className="text-xs text-neutral-400">{formatAzimuth(event.azimuth)}</span>
-    </>
-  );
 }
 
 export function MoonCard({ location, now, mode }: { location: GeoLocation | null; now: Date; mode: ZodiacMode }) {
@@ -68,35 +59,27 @@ export function MoonCard({ location, now, mode }: { location: GeoLocation | null
         <span style={{ color: ELEMENT_COLORS[moonSign.element], fontFamily: SYMBOL_FONT_FAMILY }}>{moonSign.glyph}</span>
         <span style={{ color: ELEMENT_COLORS[moonSign.element] }}>{capitalize(moonSign.element)}</span>
       </div>
-      <div className="mb-3 text-sm text-neutral-400">
-        {Math.round(distance.distanceKm).toLocaleString()} km <span className="text-neutral-500">·</span> {distance.category}
-      </div>
-
-      {moonTimes ? (
-        <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-          <div className="text-neutral-400">Moonrise</div>
-          <div>
-            <EventTime event={moonTimes.rise} />
-          </div>
-          <div className="text-neutral-400">Moonset</div>
-          <div>
-            <EventTime event={moonTimes.set} />
-          </div>
-        </div>
-      ) : (
-        <div className="mb-3 text-sm text-neutral-400">Waiting for location…</div>
-      )}
-
-      <div className="grid grid-cols-[1fr_auto_auto] items-baseline gap-x-3 gap-y-1 text-sm">
+      <div className="grid grid-cols-[auto_auto_1fr] items-baseline gap-x-2 gap-y-1 text-sm">
+        <MetricRow name="Distance" value={`${Math.round(distance.distanceKm).toLocaleString()} km`} note={distance.category} />
+        {moonTimes ? (
+          <>
+            <MetricRow
+              name="Moonrise"
+              value={moonTimes.rise ? moonTimes.rise.time.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : "—"}
+              note={moonTimes.rise ? formatAzimuth(moonTimes.rise.azimuth) : undefined}
+            />
+            <MetricRow
+              name="Moonset"
+              value={moonTimes.set ? moonTimes.set.time.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : "—"}
+              note={moonTimes.set ? formatAzimuth(moonTimes.set.azimuth) : undefined}
+            />
+          </>
+        ) : (
+          <div className="col-span-3 text-neutral-400">Waiting for location…</div>
+        )}
         {upcoming.map(({ label, event }) => {
-          const { date, daysUntil } = formatUpcomingEvent(event, now);
-          return (
-            <Fragment key={label}>
-              <div className="text-neutral-400">{label}</div>
-              <div>{date}</div>
-              <div className="text-xs text-neutral-400">{daysUntil}</div>
-            </Fragment>
-          );
+          const { date } = formatUpcomingEvent(event, now);
+          return <MetricRow key={label} name={label} value={date} />;
         })}
       </div>
     </Card>

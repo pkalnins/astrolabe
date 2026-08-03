@@ -8,7 +8,7 @@ import { compassPointFor } from "@/lib/astro/compass";
 import { describeUvIndex } from "@/lib/uvIndex";
 import { describeAqi } from "@/lib/airQuality";
 import { describeWeatherCode } from "@/lib/weatherCode";
-import { SEVERITY_COLORS } from "@/lib/severity";
+import { MetricRow } from "./MetricRow";
 import { Card } from "./Card";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -41,35 +41,17 @@ export function WeatherCard({ location }: { location: GeoLocation | null }) {
             <span className="text-lg leading-none">{describeWeatherCode(data.weatherCode).icon}</span>
             <span>{describeWeatherCode(data.weatherCode).label}</span>
           </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-            <div className="text-neutral-400">Temperature</div>
-            <div>{Math.round(data.temperatureF)}°F</div>
-            <div className="text-neutral-400">Humidity</div>
-            <div>{data.humidityPercent}%</div>
-            <div className="text-neutral-400">Pressure</div>
-            <div>
-              {data.pressureHpa.toFixed(1)} hPa <span className="text-neutral-400">{PRESSURE_TREND_ARROW[data.pressureTrend]}</span>
-            </div>
-            <div className="text-neutral-400">Wind</div>
-            <div>
-              {data.windSpeedKmh.toFixed(0)} km/h <span className="text-neutral-400">{compassPointFor(data.windDirectionDeg)}</span>
-            </div>
-            <div className="text-neutral-400">UV Index</div>
-            <div>
-              <span style={{ color: SEVERITY_COLORS[describeUvIndex(data.uvIndex).severity] }}>{data.uvIndex.toFixed(1)}</span>{" "}
-              <span className="text-xs text-neutral-400">{describeUvIndex(data.uvIndex).label}</span>
-            </div>
-            <div className="text-neutral-400">Air Quality</div>
-            <div>
-              {airQuality ? (
-                <>
-                  <span style={{ color: SEVERITY_COLORS[describeAqi(airQuality.usAqi).severity] }}>{airQuality.usAqi}</span>{" "}
-                  <span className="text-xs text-neutral-400">{describeAqi(airQuality.usAqi).label}</span>
-                </>
-              ) : (
-                "—"
-              )}
-            </div>
+          <div className="grid grid-cols-[auto_auto_1fr] items-baseline gap-x-2 gap-y-1 text-sm">
+            <MetricRow name="Temperature" value={`${Math.round(data.temperatureF)}°F`} />
+            <MetricRow name="Humidity" value={`${data.humidityPercent}%`} />
+            <MetricRow name="Pressure" value={`${data.pressureHpa.toFixed(1)} hPa`} note={PRESSURE_TREND_ARROW[data.pressureTrend]} />
+            <MetricRow name="Wind" value={`${data.windSpeedKmh.toFixed(0)} km/h`} note={compassPointFor(data.windDirectionDeg)} />
+            <MetricRow name="UV Index" value={data.uvIndex.toFixed(1)} description={describeUvIndex(data.uvIndex)} />
+            <MetricRow
+              name="Air Quality"
+              value={airQuality ? `${airQuality.usAqi}` : "—"}
+              description={airQuality ? describeAqi(airQuality.usAqi) : undefined}
+            />
           </div>
         </>
       )}

@@ -28,16 +28,23 @@ function formatDegree(longitude: number): string {
   return `${sign.glyph} ${Math.floor(degreeInSign)}°`;
 }
 
-// Extra margin (beyond the zodiac ring itself) so the ASC/DSC labels and the
-// royal-star name labels have room to render without clipping the SVG edge.
-const EXTRA_MARGIN = 110;
+// Extra margin (beyond the zodiac ring itself) so the royal-star name labels
+// (the widest thing that ever renders out there - up to "Fomalhaut", measured
+// via getBBox at ~39 SVG units wide) have room without clipping the SVG edge:
+// ring offset (60) + label gap/marker offset (11.5) + longest label (~39),
+// plus about 13% buffer for font/rendering variance across platforms.
+const EXTRA_MARGIN = 125;
 const ZODIAC_OUTER_RADIUS = 218;
-const VIEWBOX_W = ZODIAC_OUTER_RADIUS * 2 + EXTRA_MARGIN * 2 + 12;
+const VIEWBOX_W = ZODIAC_OUTER_RADIUS * 2 + EXTRA_MARGIN * 2;
 const VIEWBOX_H = ZODIAC_OUTER_RADIUS * 2 + EXTRA_MARGIN * 2;
 const CENTER_X = VIEWBOX_W / 2;
 const CENTER_Y = VIEWBOX_H / 2;
 const ZODIAC_INNER_RADIUS = ZODIAC_OUTER_RADIUS - 46;
-const ROYAL_STARS_RING_RADIUS = ZODIAC_OUTER_RADIUS + 18;
+// +60 (not closer) so the star ring stays clear of the ASC/DSC label block:
+// the wheel's rotation periodically brings a star's screen angle right up
+// against 0/180 degrees, where ASC/DSC always sit - too close and the
+// labels collide/run together.
+const ROYAL_STARS_RING_RADIUS = ZODIAC_OUTER_RADIUS + 60;
 const EARTH_RADIUS = 20;
 
 // Sun and Moon get their own rings (innermost - closest to Earth for the
@@ -68,7 +75,10 @@ export function SkyWheel({ planets, ascendant, descendant, mode, onModeChange, n
   const rest = planets.filter((p) => p.body !== "Sun" && p.body !== "Moon");
 
   return (
-    <div className="relative inline-block text-neutral-200" style={{ "--wheel-bg": "#0a0a12" } as React.CSSProperties}>
+    <div
+      className="relative w-full text-neutral-200"
+      style={{ "--wheel-bg": "#0a0a12", maxWidth: size } as React.CSSProperties}
+    >
       <button
         type="button"
         onClick={() => onModeChange(mode === "tropical" ? "sidereal" : "tropical")}
@@ -76,7 +86,7 @@ export function SkyWheel({ planets, ascendant, descendant, mode, onModeChange, n
       >
         {mode}
       </button>
-      <svg width={size} height={(size * VIEWBOX_H) / VIEWBOX_W} viewBox={`0 0 ${VIEWBOX_W} ${VIEWBOX_H}`}>
+      <svg viewBox={`0 0 ${VIEWBOX_W} ${VIEWBOX_H}`} className="aspect-square w-full">
         {/* The horizon is the horizontal line through Ascendant (left) /
             Descendant (right) once rotated - shown purely via shading rather
             than a drawn line: lighter above (currently visible sky), darker
@@ -104,6 +114,14 @@ export function SkyWheel({ planets, ascendant, descendant, mode, onModeChange, n
           ascendant={ascendant}
         />
 
+        <circle
+          cx={CENTER_X}
+          cy={CENTER_Y}
+          r={ROYAL_STARS_RING_RADIUS}
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity={0.15}
+        />
         <RoyalStarsRing cx={CENTER_X} cy={CENTER_Y} radius={ROYAL_STARS_RING_RADIUS} ascendant={ascendant} stars={royalStars} />
 
         {/* Faint guide circles marking each inner ring's path. */}
