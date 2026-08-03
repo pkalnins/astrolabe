@@ -31,6 +31,8 @@ const MID_X = WIDTH / 2;
 const AMPLITUDE = 44;
 const SAMPLE_COUNT = 180;
 const SAMPLES_PER_FILL_SEGMENT = 24;
+const MARGIN_Y = 16;
+const REFERENCE_LABEL_CLEARANCE = 25;
 
 /** Rise/set events across a few days, so the curve has real neighbors on
  * both sides of the visible window (see buildSegments). */
@@ -179,9 +181,60 @@ export function RhythmCard({ location, now }: { location: GeoLocation | null; no
   const showNow = nowT >= windowStart && nowT <= windowEnd;
   const nowY = showNow ? yFor(nowT) : 0;
 
+  // Which side has more room depends on where the *other* body's curve is at
+  // this time - not a fixed per-body side - so a label never lands on top of
+  // the other curve as it bulges toward one edge.
+  const isLeftSide = (time: number, otherSegments: Segment[]) => valueAt(time, otherSegments) > 0;
+
+  const renderEvent = (e: RiseSetPoint, color: string, otherSegments: Segment[]) => {
+    const isLeft = isLeftSide(e.time, otherSegments);
+    const textX = isLeft ? 2 : WIDTH - 2;
+    const textAnchor = isLeft ? "start" : "end";
+    const y = yFor(e.time);
+    return (
+      <g key={`${color}-${e.time}`}>
+        <line x1={isLeft ? 0 : MID_X} y1={y} x2={isLeft ? MID_X : WIDTH} y2={y} stroke={color} strokeOpacity={0.3} strokeWidth={1} />
+        <rect x={MID_X - 3} y={y - 3} width={6} height={6} fill={color} />
+        <text x={textX} y={y - 16} textAnchor={textAnchor} fontSize={7} letterSpacing={0.5} fill="#6b7280">
+          {e.type === "rise" ? "RISE" : "SET"}
+        </text>
+        <text x={textX} y={y - 4} textAnchor={textAnchor} fontSize={11} fill="#9ca3af">
+          {formatTime(e.time)}
+        </text>
+        <text x={textX} y={y + 11} textAnchor={textAnchor} fontSize={9} fill="#9ca3af">
+          {compassPointFor(e.azimuth)}
+        </text>
+      </g>
+    );
+  };
+
+  // The 12am/12pm reference labels default to the left, but flip to the
+  // right whenever a rise/set label has already claimed the left side at
+  // roughly the same height - otherwise the two can print on top of each
+  // other on days when an event happens to fall near midnight or noon.
+  const eventYSides = [
+    ...sunEvents.map((e) => ({ y: yFor(e.time), isLeft: isLeftSide(e.time, moonSegments) })),
+    ...moonEvents.map((e) => ({ y: yFor(e.time), isLeft: isLeftSide(e.time, sunSegments) })),
+  ];
+  const referenceAnchor = (lineY: number): "start" | "end" =>
+    eventYSides.some(({ y, isLeft }) => isLeft && Math.abs(y - lineY) < REFERENCE_LABEL_CLEARANCE) ? "end" : "start";
+
+  const renderReferenceLine = (lineY: number, textY: number, label: string) => {
+    const anchor = referenceAnchor(lineY);
+    const x = anchor === "start" ? 2 : WIDTH - 2;
+    return (
+      <g key={label + lineY}>
+        <line x1={0} y1={lineY} x2={WIDTH} y2={lineY} stroke="#4b5563" strokeWidth={1} />
+        <text x={x} y={textY} textAnchor={anchor} fontSize={8} fill="#6b7280">
+          {label}
+        </text>
+      </g>
+    );
+  };
+
   return (
     <Card title="Sun & Moon Rhythm">
-      <div className="mb-2 flex items-center gap-4 text-sm">
+      <div className="mb-3 flex items-center gap-4 text-sm">
         <span className="flex items-center gap-1.5">
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: PLANET_COLORS.Sun }} />
           <span className="text-neutral-400">Sun</span>
@@ -191,67 +244,51 @@ export function RhythmCard({ location, now }: { location: GeoLocation | null; no
           <span className="text-neutral-400">Moon</span>
         </span>
       </div>
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="h-[420px] w-full">
-        <path d={buildUpFillPath(sunSegments, windowStart, windowEnd)} fill={PLANET_COLORS.Sun} fillOpacity={0.12} stroke="none" />
-        <path d={buildUpFillPath(moonSegments, windowStart, windowEnd)} fill={PLANET_COLORS.Moon} fillOpacity={0.12} stroke="none" />
+      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT + MARGIN_Y * 2}`} preserveAspectRatio="none" className="h-[420px] w-full">
+        <g transform={`translate(0, ${MARGIN_Y})`}>
+          <path d={buildUpFillPath(sunSegments, windowStart, windowEnd)} fill={PLANET_COLORS.Sun} fillOpacity={0.12} stroke="none" />
+          <path d={buildUpFillPath(moonSegments, windowStart, windowEnd)} fill={PLANET_COLORS.Moon} fillOpacity={0.12} stroke="none" />
 
-        <line x1={MID_X} y1={0} x2={MID_X} y2={HEIGHT} stroke="#404040" strokeWidth={1} />
+          {renderReferenceLine(0, -5, "12am")}
+          {renderReferenceLine(HEIGHT / 2, HEIGHT / 2 - 5, "12pm")}
+          {renderReferenceLine(HEIGHT, HEIGHT + 12, "12am")}
 
-        <polyline
-          points={buildPoints(sunSegments, windowStart, windowEnd)}
-          fill="none"
-          stroke={PLANET_COLORS.Sun}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <polyline
-          points={buildPoints(moonSegments, windowStart, windowEnd)}
-          fill="none"
-          stroke={PLANET_COLORS.Moon}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+          <line x1={MID_X} y1={0} x2={MID_X} y2={HEIGHT} stroke="#404040" strokeWidth={1} />
 
-        {sunEvents.map((e) => (
-          <g key={`sun-${e.time}`}>
-            <line x1={0} y1={yFor(e.time)} x2={MID_X} y2={yFor(e.time)} stroke={PLANET_COLORS.Sun} strokeOpacity={0.3} strokeWidth={1} />
-            <rect x={MID_X - 3} y={yFor(e.time) - 3} width={6} height={6} fill={PLANET_COLORS.Sun} />
-            <text x={2} y={yFor(e.time) - 4} fontSize={9} fill="#9ca3af">
-              {formatTime(e.time)}
-            </text>
-            <text x={2} y={yFor(e.time) + 11} fontSize={9} fill="#9ca3af">
-              {compassPointFor(e.azimuth)}
-            </text>
-          </g>
-        ))}
-        {moonEvents.map((e) => (
-          <g key={`moon-${e.time}`}>
-            <line x1={MID_X} y1={yFor(e.time)} x2={WIDTH} y2={yFor(e.time)} stroke={PLANET_COLORS.Moon} strokeOpacity={0.3} strokeWidth={1} />
-            <rect x={MID_X - 3} y={yFor(e.time) - 3} width={6} height={6} fill={PLANET_COLORS.Moon} />
-            <text x={WIDTH - 2} y={yFor(e.time) - 4} textAnchor="end" fontSize={9} fill="#9ca3af">
-              {formatTime(e.time)}
-            </text>
-            <text x={WIDTH - 2} y={yFor(e.time) + 11} textAnchor="end" fontSize={9} fill="#9ca3af">
-              {compassPointFor(e.azimuth)}
-            </text>
-          </g>
-        ))}
-
-        {showNow && (
-          <circle cx={MID_X + valueAt(nowT, sunSegments) * AMPLITUDE} cy={nowY} r={7} fill={PLANET_COLORS.Sun} stroke="#171717" strokeWidth={2} />
-        )}
-        {showNow && (
-          <circle
-            cx={MID_X + valueAt(nowT, moonSegments) * AMPLITUDE}
-            cy={nowY}
-            r={7}
-            fill={PLANET_COLORS.Moon}
-            stroke="#171717"
+          <polyline
+            points={buildPoints(sunSegments, windowStart, windowEnd)}
+            fill="none"
+            stroke={PLANET_COLORS.Sun}
             strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
-        )}
+          <polyline
+            points={buildPoints(moonSegments, windowStart, windowEnd)}
+            fill="none"
+            stroke={PLANET_COLORS.Moon}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {sunEvents.map((e) => renderEvent(e, PLANET_COLORS.Sun, moonSegments))}
+          {moonEvents.map((e) => renderEvent(e, PLANET_COLORS.Moon, sunSegments))}
+
+          {showNow && (
+            <circle cx={MID_X + valueAt(nowT, sunSegments) * AMPLITUDE} cy={nowY} r={7} fill={PLANET_COLORS.Sun} stroke="#171717" strokeWidth={2} />
+          )}
+          {showNow && (
+            <circle
+              cx={MID_X + valueAt(nowT, moonSegments) * AMPLITUDE}
+              cy={nowY}
+              r={7}
+              fill={PLANET_COLORS.Moon}
+              stroke="#171717"
+              strokeWidth={2}
+            />
+          )}
+        </g>
       </svg>
     </Card>
   );

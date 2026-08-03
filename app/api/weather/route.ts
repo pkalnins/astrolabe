@@ -29,7 +29,10 @@ function findClosestPressure(hourlyTimes: string[], hourlyPressures: number[], t
   let closestIndex = -1;
   let closestDiff = Infinity;
   for (let i = 0; i < hourlyTimes.length; i++) {
-    // Open-Meteo returns naive timestamps in the query's timezone (GMT here); treat as UTC.
+    // Open-Meteo returns naive timestamps in the location's local time
+    // (`timezone=auto`); treating them as UTC here is a consistent fixed
+    // offset from their real value, which cancels out for both this diff and
+    // `currentTimeMs`'s own computation below - only their difference matters.
     const diff = Math.abs(new Date(`${hourlyTimes[i]}Z`).getTime() - targetMs);
     if (diff < closestDiff) {
       closestDiff = diff;
@@ -71,13 +74,19 @@ export async function GET(request: NextRequest) {
   url.searchParams.set("longitude", longitude);
   url.searchParams.set(
     "current",
-    "temperature_2m,relative_humidity_2m,surface_pressure,weather_code,wind_speed_10m,wind_direction_10m,uv_index",
+    "temperature_2m,relative_humidity_2m,pressure_msl,weather_code,wind_speed_10m,wind_direction_10m,uv_index",
   );
-  url.searchParams.set("hourly", "surface_pressure");
+  url.searchParams.set("hourly", "pressure_msl");
   url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min");
   url.searchParams.set("past_days", "1");
   url.searchParams.set("forecast_days", "1");
   url.searchParams.set("temperature_unit", "fahrenheit");
+  // Without this, Open-Meteo buckets `daily`/`hourly` values into GMT calendar
+  // days regardless of where the location actually is - so for most of the US,
+  // "today"'s high/low would be computed over the wrong 24-hour window (e.g.
+  // missing the actual overnight low) and diverge from what a phone weather
+  // app reports for the local calendar day.
+  url.searchParams.set("timezone", "auto");
 
   const upstream = await fetch(url, { next: { revalidate: 600 } });
   if (!upstream.ok) {
@@ -93,12 +102,12 @@ export async function GET(request: NextRequest) {
     temperatureHighF: data.daily.temperature_2m_max[todayIndex],
     temperatureLowF: data.daily.temperature_2m_min[todayIndex],
     humidityPercent: current.relative_humidity_2m,
-    pressureHpa: current.surface_pressure,
+    pressureHpa: current.pressure_msl,
     pressureTrend: getPressureTrend(
-      current.surface_pressure,
+      current.pressure_msl,
       new Date(`${current.time}Z`).getTime(),
       data.hourly.time,
-      data.hourly.surface_pressure,
+      data.hourly.pressure_msl,
     ),
     weatherCode: current.weather_code,
     windSpeedKmh: current.wind_speed_10m,
