@@ -6,6 +6,8 @@ import { getPlanetaryHour } from "@/lib/astro/planetaryHours";
 import { PLANET_GLYPHS, PLANET_COLORS } from "@/components/SkyWheel/glyphs";
 import { Card } from "./Card";
 
+const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+
 export function ClockCard({ locationState }: { locationState: UseLocationResult }) {
   const [now, setNow] = useState<Date | null>(null);
   const { location, loading, error, requestGeolocation } = locationState;
@@ -35,7 +37,15 @@ export function ClockCard({ locationState }: { locationState: UseLocationResult 
       {now ? (
         <>
           <div className="text-3xl font-mono tabular-nums" style={{ color: PLANET_COLORS.Sun }}>
-            {now.toLocaleTimeString()}
+            {TIME_FORMATTER.formatToParts(now).map((part, i) =>
+              part.type === "dayPeriod" ? (
+                <span key={i} className="text-xl">
+                  {part.value}
+                </span>
+              ) : (
+                <span key={i}>{part.value}</span>
+              ),
+            )}
           </div>
           <div className="text-sm text-neutral-400">
             {now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
@@ -45,7 +55,7 @@ export function ClockCard({ locationState }: { locationState: UseLocationResult 
           </div>
         </>
       ) : (
-        <div className="text-3xl font-mono tabular-nums text-neutral-600">--:--:--</div>
+        <div className="text-3xl font-mono tabular-nums text-neutral-600">--:--</div>
       )}
 
       <div className="mt-2">

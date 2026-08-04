@@ -1,5 +1,4 @@
-import { describeTemperatureComfort } from "@/lib/temperatureComfort";
-import { SEVERITY_COLORS } from "@/lib/severity";
+import { temperatureColor } from "@/lib/temperatureComfort";
 
 export interface TemperatureSliderProps {
   low: number;
@@ -8,11 +7,11 @@ export interface TemperatureSliderProps {
 }
 
 // Just the low<->high range and where today's reading sits in it - the
-// number and comfort label live in the Temperature row below, so this stays
-// a compact visual rather than repeating text.
+// number itself is shown above (next to the conditions), so this stays a
+// compact visual rather than repeating text.
 export function TemperatureSlider({ low, high, current }: TemperatureSliderProps) {
   const fillFraction = high === low ? 0.5 : Math.min(1, Math.max(0, (current - low) / (high - low)));
-  const markerColor = SEVERITY_COLORS[describeTemperatureComfort(current).severity];
+  const markerColor = temperatureColor(current);
 
   return (
     <div className="mb-1.5 flex items-center gap-2 text-xs text-neutral-400">

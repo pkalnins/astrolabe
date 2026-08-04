@@ -1,16 +1,15 @@
-import type { MetricDescription } from "./severity";
-
 /**
- * General outdoor-comfort banding (Fahrenheit). Unlike UV/AQI, severity here
- * increases toward *either* extreme rather than in one direction - calm sits
- * in the comfortable middle, not at the bottom of the scale.
+ * Temperature color banding (Fahrenheit) - warm end reuses the shared
+ * calm/elevated/severe severity colors (see severity.ts) since "comfortable
+ * -> hot" maps naturally onto that language, but the cold end needs shades
+ * the shared 4-color severity palette doesn't have, so it isn't sourced
+ * from there.
  */
-export function describeTemperatureComfort(tempF: number): MetricDescription {
-  if (tempF < 20) return { label: "Frigid", severity: "severe" };
-  if (tempF < 40) return { label: "Cold", severity: "elevated" };
-  if (tempF < 55) return { label: "Cool", severity: "moderate" };
-  if (tempF <= 80) return { label: "Comfortable", severity: "calm" };
-  if (tempF <= 90) return { label: "Warm", severity: "moderate" };
-  if (tempF <= 100) return { label: "Hot", severity: "elevated" };
-  return { label: "Extreme heat", severity: "severe" };
+export function temperatureColor(tempF: number): string {
+  if (tempF < 35) return "#1d4ed8"; // dark blue
+  if (tempF < 50) return "#3b82f6"; // medium blue
+  if (tempF < 65) return "#7dd3fc"; // light blue
+  if (tempF < 80) return "#4ade80"; // green
+  if (tempF < 95) return "#fb923c"; // orange
+  return "#f87171"; // red
 }

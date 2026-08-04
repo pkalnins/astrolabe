@@ -4,15 +4,18 @@ import { useMemo } from "react";
 import type { CelestialBody, PlanetPosition } from "@/lib/astro/positions";
 import { getMoonPhase } from "@/lib/astro/moonPhase";
 import { FIXED_STARS, getFixedStarPositions } from "@/lib/astro/fixedStars";
+import { getGalacticPlaneNodes } from "@/lib/astro/galacticPlane";
+import { getLunarNodes } from "@/lib/astro/lunarNodes";
 import { toSidereal } from "@/lib/astro/ayanamsa";
 import { getZodiacPosition } from "@/lib/astro/zodiac";
 import type { ZodiacMode } from "@/lib/hooks/useAstroState";
 import { ZodiacRing } from "./ZodiacRing";
 import { PlanetRing } from "./PlanetRing";
 import { FixedStarsRing } from "./FixedStarsRing";
+import { GalacticPlaneMarkers } from "./GalacticPlaneMarkers";
 import { RadialHands } from "./RadialHands";
 import { polarToPoint, radialTickPath, screenAngle } from "./geometry";
-import { SYMBOL_FONT_FAMILY } from "./glyphs";
+import { LUNAR_NODE_GLYPHS, SYMBOL_FONT_FAMILY } from "./glyphs";
 
 export interface SkyWheelProps {
   planets: PlanetPosition[];
@@ -50,6 +53,9 @@ const ZODIAC_INNER_RADIUS = ZODIAC_OUTER_RADIUS - 46;
 // labels collide/run together.
 const FIXED_STARS_RING_RADIUS = ZODIAC_OUTER_RADIUS + 60;
 const EARTH_RADIUS = 20;
+// Slate, deliberately neutral/muted - distinct from the amber ASC/DSC/MC
+// ticks and the lavender galactic-plane markers on the ring further out.
+const LUNAR_NODE_COLOR = "#94a3b8";
 
 // Traditional geocentric ("Ptolemaic") ordering - Moon closest to Earth,
 // outward through Saturn, the boundary of naked-eye antiquity. Each of these
@@ -105,6 +111,21 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
     return tropical.map((star) => ({ ...star, eclipticLongitude: toSidereal(star.eclipticLongitude, now) }));
   }, [now, mode]);
 
+  const galacticPlaneNodes = useMemo(() => {
+    const tropical = getGalacticPlaneNodes(now);
+    if (mode === "tropical") return tropical;
+    return tropical.map((node) => ({ ...node, eclipticLongitude: toSidereal(node.eclipticLongitude, now) }));
+  }, [now, mode]);
+
+  const lunarNodes = useMemo(() => {
+    const tropical = getLunarNodes(now);
+    if (mode === "tropical") return tropical;
+    return {
+      northNodeLongitude: toSidereal(tropical.northNodeLongitude, now),
+      southNodeLongitude: toSidereal(tropical.southNodeLongitude, now),
+    };
+  }, [now, mode]);
+
   const sun = planets.filter((p) => p.body === "Sun");
   const moon = planets.filter((p) => p.body === "Moon");
   const transSaturnian = planets.filter((p) => TRANS_SATURNIAN_BODIES.has(p.body));
@@ -158,6 +179,13 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
           strokeOpacity={0.15}
         />
         <FixedStarsRing cx={CENTER_X} cy={CENTER_Y} radius={FIXED_STARS_RING_RADIUS} ascendant={ascendant} stars={fixedStars} />
+        <GalacticPlaneMarkers
+          cx={CENTER_X}
+          cy={CENTER_Y}
+          radius={FIXED_STARS_RING_RADIUS}
+          ascendant={ascendant}
+          nodes={galacticPlaneNodes}
+        />
 
         {/* Sun/Moon "clock hands" - a thin line from Earth out to the
             zodiac ring, with a small circle where each meets the ring. */}
@@ -250,6 +278,57 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
             {formatDegree(midheaven)}
           </tspan>
         </text>
+
+        {/* Lunar nodes - always exactly opposite each other, so (unlike
+            ASC/DSC, pinned to the sides) they can land anywhere around the
+            circle. Glyph and degree label both sit further out along the
+            same radial line as the tick, rather than a fixed vertical
+            offset - a vertical offset only stays on that line near the very
+            top/bottom of the wheel, and drifts off at an angle everywhere
+            else (most visibly near 3/9 o'clock, where "straight out from
+            center" is horizontal, not vertical). */}
+        {(
+          [
+            { glyph: LUNAR_NODE_GLYPHS.north, longitude: lunarNodes.northNodeLongitude },
+            { glyph: LUNAR_NODE_GLYPHS.south, longitude: lunarNodes.southNodeLongitude },
+          ] as const
+        ).map(({ glyph, longitude }) => {
+          const angle = screenAngle(longitude, ascendant);
+          const glyphPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 20, angle);
+          const labelPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 34, angle);
+          return (
+            <g key={glyph}>
+              <path
+                d={radialTickPath(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS, ZODIAC_OUTER_RADIUS + 8, angle)}
+                stroke={LUNAR_NODE_COLOR}
+                strokeWidth={1.5}
+              />
+              <text
+                x={glyphPoint.x}
+                y={glyphPoint.y}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={13}
+                fontFamily={SYMBOL_FONT_FAMILY}
+                fill={LUNAR_NODE_COLOR}
+              >
+                {glyph}
+              </text>
+              <text
+                x={labelPoint.x}
+                y={labelPoint.y}
+                textAnchor="middle"
+                dominantBaseline="central"
+                fontSize={11}
+                fontFamily={SYMBOL_FONT_FAMILY}
+                fill={LUNAR_NODE_COLOR}
+                fillOpacity={0.8}
+              >
+                {formatDegree(longitude)}
+              </text>
+            </g>
+          );
+        })}
 
         {/* Earth, at center. */}
         <circle cx={CENTER_X} cy={CENTER_Y} r={EARTH_RADIUS} fill="#1d4ed8" stroke="#93c5fd" strokeWidth={1.5} />

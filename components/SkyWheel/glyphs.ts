@@ -13,6 +13,11 @@ export const PLANET_GLYPHS: Record<CelestialBody, string> = {
   Pluto: "♇",
 };
 
+export const LUNAR_NODE_GLYPHS = {
+  north: "☊",
+  south: "☋",
+} as const;
+
 // Astrological Unicode symbols (Miscellaneous Symbols block) have spotty
 // coverage in generic sans-serif fonts - explicitly prefer fonts known to
 // render them correctly rather than relying on default fallback.

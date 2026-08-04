@@ -5,8 +5,8 @@ import { SEVERITY_COLORS, type MetricDescription } from "@/lib/severity";
  * One row of a `grid-cols-[auto_auto_1fr]` metric grid: label, value, and a
  * trailing bit of grey text that gets whatever space is left over. Using a
  * flexible last column (rather than a plain 2-column grid) is what stops
- * long text like "Unhealthy (sensitive groups)" from wrapping - the
- * label/value columns only take the width they need.
+ * longer description text from wrapping - the label/value columns only take
+ * the width they need.
  *
  * All rows within a card should go through this one component so their
  * columns are computed together and actually line up - splitting a card's

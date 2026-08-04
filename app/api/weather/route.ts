@@ -16,8 +16,77 @@ export interface WeatherResponse {
   observedAt: string;
 }
 
-// Open-Meteo: free, no API key required.
+// Open-Meteo: free, no API key required. Used for the daily high/low
+// forecast, and as the current-conditions fallback for locations the NWS
+// doesn't cover (it's US-only) or when a station lookup fails.
 const OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast";
+
+// NWS/NOAA: free, no API key, but requires an identifying User-Agent per
+// https://www.weather.gov/documentation/services-web-api - used for
+// temperature/humidity/wind, since it's a real station observation rather
+// than a model estimate interpolated to the given coordinates (which can
+// diverge noticeably from actual conditions, especially during fast
+// afternoon warming).
+const NWS_USER_AGENT = "Astrolabe/1.0 (personal weather dashboard, non-commercial)";
+const CELSIUS_TO_FAHRENHEIT = (celsius: number) => (celsius * 9) / 5 + 32;
+
+interface NwsCurrentConditions {
+  temperatureF: number;
+  humidityPercent: number;
+  windSpeedKmh: number;
+  windDirectionDeg: number;
+}
+
+// Three hops: coordinates -> forecast gridpoint (which also links to nearby
+// stations) -> station list, ordered nearest-first -> that station's latest
+// observation. Station discovery (the first two hops) is cached far longer
+// than the observation itself, since the nearest station to a fixed
+// lat/long never changes.
+async function getNwsCurrentConditions(latitude: string, longitude: string): Promise<NwsCurrentConditions | null> {
+  try {
+    const headers = { "User-Agent": NWS_USER_AGENT };
+
+    const pointsResponse = await fetch(`https://api.weather.gov/points/${latitude},${longitude}`, {
+      headers,
+      next: { revalidate: 86400 },
+    });
+    if (!pointsResponse.ok) return null;
+    const points = await pointsResponse.json();
+    const stationsUrl = points.properties?.observationStations;
+    if (!stationsUrl) return null;
+
+    const stationsResponse = await fetch(stationsUrl, { headers, next: { revalidate: 86400 } });
+    if (!stationsResponse.ok) return null;
+    const stations = await stationsResponse.json();
+    const nearestStationUrl = stations.features?.[0]?.id;
+    if (!nearestStationUrl) return null;
+
+    const observationResponse = await fetch(`${nearestStationUrl}/observations/latest`, {
+      headers,
+      next: { revalidate: 600 },
+    });
+    if (!observationResponse.ok) return null;
+    const observation = await observationResponse.json();
+    const props = observation.properties;
+
+    const temperatureC = props?.temperature?.value;
+    const humidityPercent = props?.relativeHumidity?.value;
+    const windSpeedKmh = props?.windSpeed?.value;
+    // Only bail on the fields with no reasonable stand-in; a missing wind
+    // direction (common at very low/calm wind speeds, where NWS often omits
+    // it) shouldn't throw out an otherwise-good observation.
+    if (temperatureC == null || humidityPercent == null || windSpeedKmh == null) return null;
+
+    return {
+      temperatureF: CELSIUS_TO_FAHRENHEIT(temperatureC),
+      humidityPercent: Math.round(humidityPercent),
+      windSpeedKmh,
+      windDirectionDeg: props?.windDirection?.value ?? 0,
+    };
+  } catch {
+    return null;
+  }
+}
 
 // Threshold for calling a change "rising"/"falling" rather than "steady",
 // applied over a 3-hour window - a common simplified convention for
@@ -88,7 +157,10 @@ export async function GET(request: NextRequest) {
   // app reports for the local calendar day.
   url.searchParams.set("timezone", "auto");
 
-  const upstream = await fetch(url, { next: { revalidate: 600 } });
+  const [upstream, nwsCurrent] = await Promise.all([
+    fetch(url, { next: { revalidate: 600 } }),
+    getNwsCurrentConditions(latitude, longitude),
+  ]);
   if (!upstream.ok) {
     return NextResponse.json({ error: "Failed to fetch weather data" }, { status: 502 });
   }
@@ -98,10 +170,10 @@ export async function GET(request: NextRequest) {
   const todayIndex = findTodayIndex(data.daily.time, current.time);
 
   const result: WeatherResponse = {
-    temperatureF: current.temperature_2m,
+    temperatureF: nwsCurrent?.temperatureF ?? current.temperature_2m,
     temperatureHighF: data.daily.temperature_2m_max[todayIndex],
     temperatureLowF: data.daily.temperature_2m_min[todayIndex],
-    humidityPercent: current.relative_humidity_2m,
+    humidityPercent: nwsCurrent?.humidityPercent ?? current.relative_humidity_2m,
     pressureHpa: current.pressure_msl,
     pressureTrend: getPressureTrend(
       current.pressure_msl,
@@ -110,8 +182,8 @@ export async function GET(request: NextRequest) {
       data.hourly.pressure_msl,
     ),
     weatherCode: current.weather_code,
-    windSpeedKmh: current.wind_speed_10m,
-    windDirectionDeg: current.wind_direction_10m,
+    windSpeedKmh: nwsCurrent?.windSpeedKmh ?? current.wind_speed_10m,
+    windDirectionDeg: nwsCurrent?.windDirectionDeg ?? current.wind_direction_10m,
     uvIndex: current.uv_index,
     observedAt: current.time,
   };

@@ -7,6 +7,8 @@ export * from "./ascendant";
 export * from "./events";
 export * from "./moonPhase";
 export * from "./fixedStars";
+export * from "./galacticPlane";
+export * from "./lunarNodes";
 export * from "./compass";
 export * from "./moonDistance";
 export * from "./skyEvents";
