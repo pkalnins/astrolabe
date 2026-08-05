@@ -34,13 +34,25 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen flex-1 flex-col items-center gap-6 bg-black p-6 text-neutral-100">
-      <div className="flex w-full flex-1 flex-col items-center gap-6 lg:flex-row lg:items-stretch lg:justify-center">
-        <div className="order-2 flex w-full flex-col gap-3 lg:order-1 lg:w-[28rem]">
+      <div className="flex w-full flex-1 flex-col items-center gap-3 lg:flex-row lg:items-stretch lg:justify-center">
+        <div className="order-2 flex w-full flex-col gap-3 lg:order-1 lg:w-[36rem]">
           <ClockCard locationState={locationState} />
           <WeatherCard location={locationState.location} />
-          <SunCard location={locationState.location} now={astro.now} />
-          <div className="lg:flex-1 lg:[&>div]:h-full">
+          {/* Hidden at the lg breakpoint and up - the wheel's hover
+              tooltips cover this same information there. Kept below lg,
+              where the wheel has no hover (touch has no hover state). */}
+          <div className="lg:hidden">
+            <SunCard location={locationState.location} now={astro.now} />
+          </div>
+          <div className="lg:hidden">
             <MoonCard location={locationState.location} now={astro.now} mode={astro.mode} />
+          </div>
+          <RhythmCard location={locationState.location} now={astro.now} />
+          {/* flex-1 + the inner Card stretched to h-full - so this card's
+              bottom edge always lines up with the wheel's, however much
+              vertical room is left over above it. */}
+          <div className="lg:flex-1 lg:[&>div]:h-full">
+            <AspectsCard now={astro.now} />
           </div>
         </div>
 
@@ -54,15 +66,9 @@ export default function Home() {
               mode={astro.mode}
               onModeChange={astro.setMode}
               now={astro.now}
+              location={locationState.location}
             />
           </Card>
-        </div>
-
-        <div className="order-3 flex w-full flex-col gap-3 lg:w-72">
-          <AspectsCard now={astro.now} />
-          <div className="lg:flex-1 lg:[&>div]:h-full">
-            <RhythmCard location={locationState.location} now={astro.now} />
-          </div>
         </div>
       </div>
     </div>

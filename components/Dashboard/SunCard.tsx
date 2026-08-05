@@ -1,26 +1,18 @@
 "use client";
 
 import { useMemo } from "react";
-import useSWR from "swr";
 import { getNextSeason } from "@/lib/astro/skyEvents";
 import { describeKp, describeSolarWindSpeed, describeBz, describeFlareClass } from "@/lib/spaceWeather";
 import { describeAuroraChance } from "@/lib/aurora";
+import { useSolarActivity } from "@/lib/hooks/useSolarActivity";
 import type { GeoLocation } from "@/lib/astro/location";
-import type { SpaceWeatherResponse } from "@/app/api/space-weather/route";
-import type { AuroraResponse } from "@/app/api/aurora/route";
 import { formatUpcomingEvent } from "./eventFormat";
 import { MetricRow, ValueWithUnit } from "./MetricRow";
 import { Card } from "./Card";
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
-const REFRESH_MS = 10 * 60 * 1000;
-
 export function SunCard({ location, now }: { location: GeoLocation | null; now: Date }) {
   const season = useMemo(() => getNextSeason(now), [now]);
-
-  const { data: spaceWeather } = useSWR<SpaceWeatherResponse>("/api/space-weather", fetcher, { refreshInterval: REFRESH_MS });
-  const auroraKey = location ? `/api/aurora?latitude=${location.latitude}&longitude=${location.longitude}` : null;
-  const { data: aurora } = useSWR<AuroraResponse>(auroraKey, fetcher, { refreshInterval: REFRESH_MS });
+  const { spaceWeather, aurora } = useSolarActivity(location);
 
   const { date: seasonDate } = formatUpcomingEvent(season, now);
 

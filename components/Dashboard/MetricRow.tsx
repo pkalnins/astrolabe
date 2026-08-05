@@ -17,25 +17,57 @@ import { SEVERITY_COLORS, type MetricDescription } from "@/lib/severity";
  * (e.g. UV index, AQI). `note` is for trailing text with no severity concept
  * (e.g. a pressure trend arrow, a rise/set azimuth) - it doesn't affect the
  * value's color. Pass at most one of the two.
+ *
+ * `stacked` drops the label/description onto its own row below, aligned
+ * under the value's column rather than squeezed into the narrow remainder
+ * of the same row - for narrower contexts (e.g. the wheel's hover tooltips)
+ * where that third column doesn't have enough room to hold real text.
+ *
+ * `nameColor` overrides the label's default neutral color (e.g. distinguishing
+ * "Rise" from "Set" at a glance) - it doesn't affect the value or trailing text.
  */
 export function MetricRow({
   name,
   value,
   description,
   note,
+  stacked = false,
+  nameColor,
 }: {
   name: string;
   value: ReactNode;
   description?: MetricDescription;
   note?: string;
+  stacked?: boolean;
+  nameColor?: string;
 }) {
+  const trailing = description?.label ?? note;
+  const valueColor = description ? { color: SEVERITY_COLORS[description.severity] } : undefined;
+  const nameStyle = nameColor ? { color: nameColor } : undefined;
+
+  if (stacked) {
+    return (
+      <>
+        <div className="text-neutral-400 whitespace-nowrap" style={nameStyle}>
+          {name}
+        </div>
+        <div className="whitespace-nowrap" style={valueColor}>
+          {value}
+        </div>
+        {trailing && <div className="col-span-2 col-start-2 -mt-0.5 text-xs text-neutral-400">{trailing}</div>}
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="text-neutral-400 whitespace-nowrap">{name}</div>
-      <div className="whitespace-nowrap" style={description ? { color: SEVERITY_COLORS[description.severity] } : undefined}>
+      <div className="text-neutral-400 whitespace-nowrap" style={nameStyle}>
+        {name}
+      </div>
+      <div className="whitespace-nowrap" style={valueColor}>
         {value}
       </div>
-      <div className="text-xs text-neutral-400">{description?.label ?? note}</div>
+      <div className="min-w-0 text-xs text-neutral-400 break-words">{trailing}</div>
     </>
   );
 }

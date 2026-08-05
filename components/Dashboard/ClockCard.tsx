@@ -36,7 +36,7 @@ export function ClockCard({ locationState }: { locationState: UseLocationResult 
     <Card>
       {now ? (
         <>
-          <div className="text-3xl font-mono tabular-nums" style={{ color: PLANET_COLORS.Sun }}>
+          <div className="text-4xl font-mono tabular-nums" style={{ color: PLANET_COLORS.Sun }}>
             {TIME_FORMATTER.formatToParts(now).map((part, i) =>
               part.type === "dayPeriod" ? (
                 <span key={i} className="text-xl">
@@ -55,7 +55,7 @@ export function ClockCard({ locationState }: { locationState: UseLocationResult 
           </div>
         </>
       ) : (
-        <div className="text-3xl font-mono tabular-nums text-neutral-600">--:--</div>
+        <div className="text-4xl font-mono tabular-nums text-neutral-600">--:--</div>
       )}
 
       <div className="mt-2">

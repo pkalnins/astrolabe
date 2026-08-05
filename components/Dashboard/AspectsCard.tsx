@@ -11,8 +11,10 @@ import { Card } from "./Card";
 // interesting day-to-day, and they crowd out the faster-moving bodies.
 const EXCLUDED_BODIES: ReadonlySet<CelestialBody> = new Set(["Uranus", "Neptune", "Pluto"]);
 
-// Traditional harmonious/challenging/neutral read on each aspect type.
-const ASPECT_COLORS: Record<AspectType, string> = {
+// Traditional harmonious/challenging/neutral read on each aspect type -
+// shared with the wheel's per-planet hover tooltip, so both read the same
+// harmonious/challenging color coding.
+export const ASPECT_COLORS: Record<AspectType, string> = {
   trine: "#4ade80",
   sextile: "#4ade80",
   square: "#f87171",
@@ -28,7 +30,7 @@ function AspectRow({ aspect }: { aspect: Aspect }) {
         <span style={{ color: ASPECT_COLORS[aspect.type] }}>{aspect.glyph}</span>{" "}
         <span style={{ color: PLANET_COLORS[aspect.bodyB] }}>{PLANET_GLYPHS[aspect.bodyB]}</span>
       </span>
-      <span className="ml-auto shrink-0 text-xs text-neutral-500">{aspect.orb.toFixed(1)}°</span>
+      <span className="shrink-0 text-xs text-neutral-500">{aspect.orb.toFixed(1)}°</span>
     </div>
   );
 }
@@ -51,7 +53,7 @@ export function AspectsCard({ now }: { now: Date }) {
       {aspects.length === 0 ? (
         <div className="text-sm text-neutral-400">No major aspects within orb right now.</div>
       ) : (
-        <div className="flex flex-col gap-1.5">
+        <div className="grid grid-cols-3 gap-x-4 gap-y-1.5">
           {aspects.map((aspect) => (
             <AspectRow key={`${aspect.bodyA}-${aspect.bodyB}`} aspect={aspect} />
           ))}

@@ -19,20 +19,30 @@ interface Segment {
   sign: 1 | -1;
 }
 
-// Time runs top-to-bottom over one real midnight-to-midnight day, shared by
+// Time runs left-to-right over one real midnight-to-midnight day, shared by
 // both curves - so where the Sun and Moon each cross the horizon lines up
 // meaningfully with each other (e.g. "moonset happens a few hours after
 // sunrise"), not just within each body's own rhythm. The horizon is a
-// vertical line down the middle, with "up" (the Sun in daylight, the Moon
-// while risen) bulging to the right and "down" to the left.
-const WIDTH = 160;
-const HEIGHT = 620;
-const MID_X = WIDTH / 2;
+// horizontal line through the middle, with "up" (the Sun in daylight, the
+// Moon while risen) bulging above it and "down" below.
+const TIME_AXIS = 620;
+const BULGE_SPAN = 160;
+const MID_Y = BULGE_SPAN / 2;
 const AMPLITUDE = 44;
 const SAMPLE_COUNT = 180;
 const SAMPLES_PER_FILL_SEGMENT = 24;
-const MARGIN_Y = 16;
-const REFERENCE_LABEL_CLEARANCE = 25;
+// Large enough that the RISE/SET event labels' own text - stacked 3 lines,
+// up to fontSize 11 - actually fit above/below the plotted BULGE_SPAN
+// without their glyphs' ascent/descent clipping against the viewBox edge.
+// The reference-line labels (12am/12pm, a single smaller line) need far
+// less room, but share this same margin for a consistent top/bottom band.
+const MARGIN_Y = 24;
+// Larger than the vertical layout's equivalent constant was: this axis now
+// carries the event labels' *width* (e.g. "10:24 AM"), not their height, so
+// it takes much more clearance to avoid the reference label's text actually
+// touching it.
+const REFERENCE_LABEL_CLEARANCE = 70;
+const EVENT_LABEL_LINE_HEIGHT = 12;
 
 /** Rise/set events across a few days, so the curve has real neighbors on
  * both sides of the visible window (see buildSegments). */
@@ -75,7 +85,7 @@ function buildSegments(events: RiseSetPoint[]): Segment[] {
  * for that real alignment: two segments of different lengths meeting at a
  * shared rise/set point generally don't have exactly matching slopes there,
  * so there's a small, honest kink at each crossing rather than a perfectly
- * seamless wave - the cost of keeping the vertical axis meaningful.
+ * seamless wave - the cost of keeping the horizontal axis meaningful.
  */
 function valueAt(t: number, segments: Segment[]): number {
   const segment = segments.find((s) => t >= s.start && t <= s.end);
@@ -89,22 +99,22 @@ function valueAt(t: number, segments: Segment[]): number {
 function buildPoints(segments: Segment[], windowStart: number, windowEnd: number): string {
   return Array.from({ length: SAMPLE_COUNT + 1 }, (_, i) => {
     const t = windowStart + (i / SAMPLE_COUNT) * (windowEnd - windowStart);
-    const y = (i / SAMPLE_COUNT) * HEIGHT;
-    const x = MID_X + valueAt(t, segments) * AMPLITUDE;
+    const x = (i / SAMPLE_COUNT) * TIME_AXIS;
+    const y = MID_Y - valueAt(t, segments) * AMPLITUDE;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
 }
 
 /**
- * A wash under just the "up" (right-hand) side of the curve - one closed
+ * A wash under just the "up" (above-horizon) side of the curve - one closed
  * shape per up-segment, clipped to the visible window. A segment's curve
- * already starts and ends exactly on the horizon (x = MID_X), so tracing
+ * already starts and ends exactly on the horizon (y = MID_Y), so tracing
  * the sampled curve points and closing the path is enough - the closing
- * edge lands right back on the vertical line with no separate "return"
+ * edge lands right back on the horizontal line with no separate "return"
  * segment to construct.
  */
 function buildUpFillPath(segments: Segment[], windowStart: number, windowEnd: number): string {
-  const yForT = (t: number) => ((t - windowStart) / (windowEnd - windowStart)) * HEIGHT;
+  const xForT = (t: number) => ((t - windowStart) / (windowEnd - windowStart)) * TIME_AXIS;
   return segments
     .filter((s) => s.sign === 1)
     .map((segment) => {
@@ -114,21 +124,21 @@ function buildUpFillPath(segments: Segment[], windowStart: number, windowEnd: nu
       const span = segment.end - segment.start;
       const points: string[] = [];
       // A segment clipped by the window edge no longer starts/ends at
-      // x = MID_X (that only holds at the segment's own true start/end), so
+      // y = MID_Y (that only holds at the segment's own true start/end), so
       // the closing edge needs an explicit corner point on the horizon line
       // at the window boundary - otherwise Z's implicit close cuts a
       // diagonal straight to wherever the curve happened to be.
       if (segment.start < windowStart) {
-        points.push(`${MID_X.toFixed(1)},${yForT(windowStart).toFixed(1)}`);
+        points.push(`${xForT(windowStart).toFixed(1)},${MID_Y.toFixed(1)}`);
       }
       for (let i = 0; i <= SAMPLES_PER_FILL_SEGMENT; i++) {
         const t = clippedStart + (i / SAMPLES_PER_FILL_SEGMENT) * (clippedEnd - clippedStart);
         const u = span > 0 ? (t - segment.start) / span : 0;
-        const x = MID_X + Math.sin(Math.PI * u) * AMPLITUDE;
-        points.push(`${x.toFixed(1)},${yForT(t).toFixed(1)}`);
+        const y = MID_Y - Math.sin(Math.PI * u) * AMPLITUDE;
+        points.push(`${xForT(t).toFixed(1)},${y.toFixed(1)}`);
       }
       if (segment.end > windowEnd) {
-        points.push(`${MID_X.toFixed(1)},${yForT(windowEnd).toFixed(1)}`);
+        points.push(`${xForT(windowEnd).toFixed(1)},${MID_Y.toFixed(1)}`);
       }
       return `M ${points.join(" L ")} Z`;
     })
@@ -176,56 +186,61 @@ export function RhythmCard({ location, now }: { location: GeoLocation | null; no
   }
 
   const { windowStart, windowEnd, sunSegments, moonSegments, sunEvents, moonEvents } = data;
-  const yFor = (t: number) => ((t - windowStart) / (windowEnd - windowStart)) * HEIGHT;
+  const xFor = (t: number) => ((t - windowStart) / (windowEnd - windowStart)) * TIME_AXIS;
   const nowT = now.getTime();
   const showNow = nowT >= windowStart && nowT <= windowEnd;
-  const nowY = showNow ? yFor(nowT) : 0;
+  const nowX = showNow ? xFor(nowT) : 0;
 
   // Which side has more room depends on where the *other* body's curve is at
   // this time - not a fixed per-body side - so a label never lands on top of
   // the other curve as it bulges toward one edge.
-  const isLeftSide = (time: number, otherSegments: Segment[]) => valueAt(time, otherSegments) > 0;
+  const isTopSide = (time: number, otherSegments: Segment[]) => valueAt(time, otherSegments) > 0;
 
   const renderEvent = (e: RiseSetPoint, color: string, otherSegments: Segment[]) => {
-    const isLeft = isLeftSide(e.time, otherSegments);
-    const textX = isLeft ? 2 : WIDTH - 2;
-    const textAnchor = isLeft ? "start" : "end";
-    const y = yFor(e.time);
+    const isTop = isTopSide(e.time, otherSegments);
+    const x = xFor(e.time);
+    // Three stacked lines (RISE/time/compass), always in that top-to-bottom
+    // reading order regardless of which edge the block sits near - anchored
+    // close to the top edge growing down, or close to the bottom edge
+    // growing up, so the block itself never crosses the horizon.
+    const riseY = isTop ? -14 : BULGE_SPAN - 10;
+    const timeY = riseY + EVENT_LABEL_LINE_HEIGHT;
+    const compassY = timeY + EVENT_LABEL_LINE_HEIGHT;
     return (
       <g key={`${color}-${e.time}`}>
-        <line x1={isLeft ? 0 : MID_X} y1={y} x2={isLeft ? MID_X : WIDTH} y2={y} stroke={color} strokeOpacity={0.3} strokeWidth={1} />
-        <rect x={MID_X - 3} y={y - 3} width={6} height={6} fill={color} />
-        <text x={textX} y={y - 16} textAnchor={textAnchor} fontSize={7} letterSpacing={0.5} fill="#6b7280">
+        <line x1={x} y1={isTop ? 0 : BULGE_SPAN} x2={x} y2={MID_Y} stroke={color} strokeOpacity={0.3} strokeWidth={1} />
+        <rect x={x - 3} y={MID_Y - 3} width={6} height={6} fill={color} />
+        <text x={x} y={riseY} textAnchor="middle" fontSize={7} letterSpacing={0.5} fill="#6b7280">
           {e.type === "rise" ? "RISE" : "SET"}
         </text>
-        <text x={textX} y={y - 4} textAnchor={textAnchor} fontSize={11} fill="#9ca3af">
+        <text x={x} y={timeY} textAnchor="middle" fontSize={11} fill="#9ca3af">
           {formatTime(e.time)}
         </text>
-        <text x={textX} y={y + 11} textAnchor={textAnchor} fontSize={9} fill="#9ca3af">
+        <text x={x} y={compassY} textAnchor="middle" fontSize={9} fill="#9ca3af">
           {compassPointFor(e.azimuth)}
         </text>
       </g>
     );
   };
 
-  // The 12am/12pm reference labels default to the left, but flip to the
-  // right whenever a rise/set label has already claimed the left side at
-  // roughly the same height - otherwise the two can print on top of each
-  // other on days when an event happens to fall near midnight or noon.
-  const eventYSides = [
-    ...sunEvents.map((e) => ({ y: yFor(e.time), isLeft: isLeftSide(e.time, moonSegments) })),
-    ...moonEvents.map((e) => ({ y: yFor(e.time), isLeft: isLeftSide(e.time, sunSegments) })),
+  // The 12am/12pm reference labels default to the top, but flip to the
+  // bottom whenever a rise/set label has already claimed the top side at
+  // roughly this time - otherwise the two can print on top of each other on
+  // days when an event happens to fall near midnight or noon.
+  const eventXSides = [
+    ...sunEvents.map((e) => ({ x: xFor(e.time), isTop: isTopSide(e.time, moonSegments) })),
+    ...moonEvents.map((e) => ({ x: xFor(e.time), isTop: isTopSide(e.time, sunSegments) })),
   ];
-  const referenceAnchor = (lineY: number): "start" | "end" =>
-    eventYSides.some(({ y, isLeft }) => isLeft && Math.abs(y - lineY) < REFERENCE_LABEL_CLEARANCE) ? "end" : "start";
+  const referenceIsTop = (lineX: number): boolean =>
+    !eventXSides.some(({ x, isTop }) => isTop && Math.abs(x - lineX) < REFERENCE_LABEL_CLEARANCE);
 
-  const renderReferenceLine = (lineY: number, textY: number, label: string) => {
-    const anchor = referenceAnchor(lineY);
-    const x = anchor === "start" ? 2 : WIDTH - 2;
+  const renderReferenceLine = (lineX: number, xAnchor: "start" | "middle" | "end", label: string) => {
+    const isTop = referenceIsTop(lineX);
+    const y = isTop ? -5 : BULGE_SPAN + 12;
     return (
-      <g key={label + lineY}>
-        <line x1={0} y1={lineY} x2={WIDTH} y2={lineY} stroke="#4b5563" strokeWidth={1} />
-        <text x={x} y={textY} textAnchor={anchor} fontSize={8} fill="#6b7280">
+      <g key={label + lineX}>
+        <line x1={lineX} y1={0} x2={lineX} y2={BULGE_SPAN} stroke="#4b5563" strokeWidth={1} />
+        <text x={lineX} y={y} textAnchor={xAnchor} fontSize={8} fill="#6b7280">
           {label}
         </text>
       </g>
@@ -244,16 +259,16 @@ export function RhythmCard({ location, now }: { location: GeoLocation | null; no
           <span className="text-neutral-400">Moon</span>
         </span>
       </div>
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT + MARGIN_Y * 2}`} preserveAspectRatio="none" className="h-[420px] w-full">
+      <svg viewBox={`0 0 ${TIME_AXIS} ${BULGE_SPAN + MARGIN_Y * 2}`} preserveAspectRatio="none" className="h-[240px] w-full">
         <g transform={`translate(0, ${MARGIN_Y})`}>
           <path d={buildUpFillPath(sunSegments, windowStart, windowEnd)} fill={PLANET_COLORS.Sun} fillOpacity={0.12} stroke="none" />
           <path d={buildUpFillPath(moonSegments, windowStart, windowEnd)} fill={PLANET_COLORS.Moon} fillOpacity={0.12} stroke="none" />
 
-          {renderReferenceLine(0, -5, "12am")}
-          {renderReferenceLine(HEIGHT / 2, HEIGHT / 2 - 5, "12pm")}
-          {renderReferenceLine(HEIGHT, HEIGHT + 12, "12am")}
+          {renderReferenceLine(0, "start", "12am")}
+          {renderReferenceLine(TIME_AXIS / 2, "middle", "12pm")}
+          {renderReferenceLine(TIME_AXIS, "end", "12am")}
 
-          <line x1={MID_X} y1={0} x2={MID_X} y2={HEIGHT} stroke="#404040" strokeWidth={1} />
+          <line x1={0} y1={MID_Y} x2={TIME_AXIS} y2={MID_Y} stroke="#404040" strokeWidth={1} />
 
           <polyline
             points={buildPoints(sunSegments, windowStart, windowEnd)}
@@ -276,12 +291,12 @@ export function RhythmCard({ location, now }: { location: GeoLocation | null; no
           {moonEvents.map((e) => renderEvent(e, PLANET_COLORS.Moon, sunSegments))}
 
           {showNow && (
-            <circle cx={MID_X + valueAt(nowT, sunSegments) * AMPLITUDE} cy={nowY} r={7} fill={PLANET_COLORS.Sun} stroke="#171717" strokeWidth={2} />
+            <circle cx={nowX} cy={MID_Y - valueAt(nowT, sunSegments) * AMPLITUDE} r={7} fill={PLANET_COLORS.Sun} stroke="#171717" strokeWidth={2} />
           )}
           {showNow && (
             <circle
-              cx={MID_X + valueAt(nowT, moonSegments) * AMPLITUDE}
-              cy={nowY}
+              cx={nowX}
+              cy={MID_Y - valueAt(nowT, moonSegments) * AMPLITUDE}
               r={7}
               fill={PLANET_COLORS.Moon}
               stroke="#171717"

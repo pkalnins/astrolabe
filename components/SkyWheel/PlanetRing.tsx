@@ -1,4 +1,4 @@
-import type { PlanetPosition } from "@/lib/astro/positions";
+import type { CelestialBody, PlanetPosition } from "@/lib/astro/positions";
 import type { MoonPhaseInfo } from "@/lib/astro/moonPhase";
 import { polarToPoint, screenAngle } from "./geometry";
 import { PLANET_GLYPHS, PLANET_COLORS, SYMBOL_FONT_FAMILY } from "./glyphs";
@@ -14,6 +14,9 @@ export interface PlanetRingProps {
   circleRadius: number;
   /** Required to draw the Moon as its current phase rather than a glyph. */
   moonPhase?: MoonPhaseInfo;
+  /** Backs each marker's hover tooltip. Takes the body since a single ring
+      (the trans-Saturnian one) can hold more than one planet. */
+  onHover?: (body: CelestialBody, event: React.MouseEvent<SVGGElement> | null) => void;
 }
 
 const RETROGRADE_STROKE = "#ef4444";
@@ -23,33 +26,49 @@ function colorFor(planet: PlanetPosition): string {
   return PLANET_COLORS[planet.body];
 }
 
-export function PlanetRing({ cx, cy, radius, ascendant, planets, circleRadius, moonPhase }: PlanetRingProps) {
+export function PlanetRing({ cx, cy, radius, ascendant, planets, circleRadius, moonPhase, onHover }: PlanetRingProps) {
   return (
     <g>
       {planets.map((planet) => {
         const angle = screenAngle(planet.eclipticLongitude, ascendant);
         const point = polarToPoint(cx, cy, radius, angle);
         const badgeColor = colorFor(planet);
+        const hoverProps = {
+          onMouseEnter: onHover && ((e: React.MouseEvent<SVGGElement>) => onHover(planet.body, e)),
+          onMouseLeave: onHover && (() => onHover(planet.body, null)),
+          style: onHover ? { cursor: "pointer" } : undefined,
+        };
+
         if (planet.body === "Sun") {
-          return <circle key={planet.body} cx={point.x} cy={point.y} r={circleRadius} fill={badgeColor} />;
+          return (
+            <g key={planet.body} {...hoverProps}>
+              <circle cx={point.x} cy={point.y} r={circleRadius} fill={badgeColor} />
+              {/* Invisible, larger hit area - the visible badge alone is a
+                  small target to land a hover on precisely. */}
+              <circle cx={point.x} cy={point.y} r={circleRadius + 6} fill="transparent" />
+            </g>
+          );
         }
 
         if (planet.body === "Moon" && moonPhase) {
           return (
-            <MoonPhaseIcon
-              key={planet.body}
-              x={point.x}
-              y={point.y}
-              radius={circleRadius}
-              illuminatedFraction={moonPhase.illuminatedFraction}
-              waxing={moonPhase.angle < 180}
-              litColor={badgeColor}
-            />
+            <g key={planet.body} {...hoverProps}>
+              <MoonPhaseIcon
+                x={point.x}
+                y={point.y}
+                radius={circleRadius}
+                illuminatedFraction={moonPhase.illuminatedFraction}
+                waxing={moonPhase.angle < 180}
+                litColor={badgeColor}
+              />
+              {/* Invisible, larger hit area - matches the Sun ring's. */}
+              <circle cx={point.x} cy={point.y} r={circleRadius + 6} fill="transparent" />
+            </g>
           );
         }
 
         return (
-          <g key={planet.body}>
+          <g key={planet.body} {...hoverProps}>
             <circle
               cx={point.x}
               cy={point.y}
@@ -73,6 +92,8 @@ export function PlanetRing({ cx, cy, radius, ascendant, planets, circleRadius, m
                 {PLANET_GLYPHS[planet.body]}
               </text>
             )}
+            {/* Invisible, larger hit area - matches the Sun/Moon rings'. */}
+            <circle cx={point.x} cy={point.y} r={circleRadius + 6} fill="transparent" />
           </g>
         );
       })}

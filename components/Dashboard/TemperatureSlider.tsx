@@ -14,7 +14,7 @@ export function TemperatureSlider({ low, high, current }: TemperatureSliderProps
   const markerColor = temperatureColor(current);
 
   return (
-    <div className="mb-1.5 flex items-center gap-2 text-xs text-neutral-400">
+    <div className="flex items-center gap-2 text-xs text-neutral-400">
       <span>{Math.round(low)}°</span>
       <div className="relative h-3.5 flex-1">
         <div className="absolute top-1/2 right-0 left-0 h-1.5 -translate-y-1/2 rounded-full bg-neutral-700" />

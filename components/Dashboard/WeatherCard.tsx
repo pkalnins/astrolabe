@@ -9,7 +9,8 @@ import { describeUvIndex } from "@/lib/uvIndex";
 import { describeAqi } from "@/lib/airQuality";
 import { describeWeatherCode } from "@/lib/weatherCode";
 import { temperatureColor } from "@/lib/temperatureComfort";
-import { MetricRow, ValueWithUnit } from "./MetricRow";
+import { SEVERITY_COLORS } from "@/lib/severity";
+import { ValueWithUnit } from "./MetricRow";
 import { TemperatureSlider } from "./TemperatureSlider";
 import { Card } from "./Card";
 
@@ -41,34 +42,45 @@ export function WeatherCard({ location }: { location: GeoLocation | null }) {
         <div className="text-sm text-neutral-400">Loading…</div>
       ) : (
         <>
-          <div className="mb-1.5 flex items-center justify-between">
-            <div className="text-3xl font-semibold tabular-nums" style={{ color: temperatureColor(data.temperatureF) }}>
+          <div className="mb-1.5 grid grid-cols-3 items-center gap-x-4 gap-y-1.5">
+            <div className="col-span-1 text-3xl font-semibold tabular-nums" style={{ color: temperatureColor(data.temperatureF) }}>
               {Math.round(data.temperatureF)}°<span className="text-lg text-neutral-500">F</span>
             </div>
-            <div className="flex items-center gap-1.5 text-sm">
+            <div className="col-span-2 flex items-center gap-1.5 text-sm">
               <span className="text-lg leading-none">{describeWeatherCode(data.weatherCode).icon}</span>
               <span>{describeWeatherCode(data.weatherCode).label}</span>
             </div>
+            <div className="col-span-2 col-start-1">
+              <TemperatureSlider low={data.temperatureLowF} high={data.temperatureHighF} current={data.temperatureF} />
+            </div>
           </div>
-          <TemperatureSlider low={data.temperatureLowF} high={data.temperatureHighF} current={data.temperatureF} />
-          <div className="grid grid-cols-[auto_auto_1fr] items-baseline gap-x-2 gap-y-0.5 text-sm">
-            <MetricRow name="Humidity" value={<ValueWithUnit value={`${data.humidityPercent}`} unit="%" spaced={false} />} />
-            <MetricRow
-              name="Pressure"
-              value={<ValueWithUnit value={(data.pressureHpa * HPA_TO_INHG).toFixed(2)} unit="inHg" />}
-              note={PRESSURE_TREND_ARROW[data.pressureTrend]}
-            />
-            <MetricRow
-              name="Wind"
-              value={<ValueWithUnit value={(data.windSpeedKmh * KMH_TO_MPH).toFixed(0)} unit="mph" />}
-              note={compassPointFor(data.windDirectionDeg)}
-            />
-            <MetricRow name="UV Index" value={data.uvIndex.toFixed(1)} description={describeUvIndex(data.uvIndex)} />
-            <MetricRow
-              name="Air Quality"
-              value={airQuality ? `${airQuality.usAqi}` : "—"}
-              description={airQuality ? describeAqi(airQuality.usAqi) : undefined}
-            />
+          <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm lg:grid-cols-3">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-neutral-400">Humidity</span>
+              <ValueWithUnit value={`${data.humidityPercent}`} unit="%" spaced={false} />
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-neutral-400">Pressure</span>
+              <ValueWithUnit value={(data.pressureHpa * HPA_TO_INHG).toFixed(2)} unit="inHg" />
+              <span className="text-xs text-neutral-400">{PRESSURE_TREND_ARROW[data.pressureTrend]}</span>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-neutral-400">Wind</span>
+              <ValueWithUnit value={(data.windSpeedKmh * KMH_TO_MPH).toFixed(0)} unit="mph" />
+              <span className="text-xs text-neutral-400">{compassPointFor(data.windDirectionDeg)}</span>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-neutral-400">UV Index</span>
+              <span style={{ color: SEVERITY_COLORS[describeUvIndex(data.uvIndex).severity] }}>{data.uvIndex.toFixed(1)}</span>
+              <span className="text-xs text-neutral-400">{describeUvIndex(data.uvIndex).label}</span>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-neutral-400">Air Quality</span>
+              <span style={{ color: airQuality ? SEVERITY_COLORS[describeAqi(airQuality.usAqi).severity] : undefined }}>
+                {airQuality ? airQuality.usAqi : "—"}
+              </span>
+              {airQuality && <span className="text-xs text-neutral-400">{describeAqi(airQuality.usAqi).label}</span>}
+            </div>
           </div>
         </>
       )}
