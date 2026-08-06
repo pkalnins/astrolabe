@@ -39,14 +39,21 @@ export function getNextSeason(date: Date): UpcomingEvent {
   return { name: "March Equinox", date: nextYear.mar_equinox.date };
 }
 
-function lunarEclipseLabel(kind: Astronomy.EclipseKind): string {
+export interface LunarEclipseEvent extends UpcomingEvent {
+  /** "Total" | "Partial" | "Penumbral" - broken out from `name` so callers
+   * with tight label columns can show it separately (e.g. smaller, muted)
+   * instead of it padding out "Lunar Eclipse" into a much wider string. */
+  kind: string;
+}
+
+function lunarEclipseKind(kind: Astronomy.EclipseKind): string {
   switch (kind) {
     case Astronomy.EclipseKind.Total:
-      return "Total Lunar Eclipse";
+      return "Total";
     case Astronomy.EclipseKind.Partial:
-      return "Partial Lunar Eclipse";
+      return "Partial";
     default:
-      return "Penumbral Lunar Eclipse";
+      return "Penumbral";
   }
 }
 
@@ -55,7 +62,8 @@ function lunarEclipseLabel(kind: Astronomy.EclipseKind): string {
  * from wherever the Moon is above the horizon at that moment (roughly half
  * of Earth), not necessarily the user's specific location.
  */
-export function getNextLunarEclipse(date: Date): UpcomingEvent {
+export function getNextLunarEclipse(date: Date): LunarEclipseEvent {
   const eclipse = Astronomy.SearchLunarEclipse(date);
-  return { name: lunarEclipseLabel(eclipse.kind), date: eclipse.peak.date };
+  const kind = lunarEclipseKind(eclipse.kind);
+  return { name: `${kind} Lunar Eclipse`, kind, date: eclipse.peak.date };
 }

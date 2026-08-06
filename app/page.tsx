@@ -8,9 +8,9 @@ import { Card } from "@/components/Dashboard/Card";
 import { ClockCard } from "@/components/Dashboard/ClockCard";
 import { WeatherCard } from "@/components/Dashboard/WeatherCard";
 import { AspectsCard } from "@/components/Dashboard/AspectsCard";
+import { SatelliteCard } from "@/components/Dashboard/SatelliteCard";
 import { SunCard } from "@/components/Dashboard/SunCard";
 import { MoonCard } from "@/components/Dashboard/MoonCard";
-import { RhythmCard } from "@/components/Dashboard/RhythmCard";
 
 export default function Home() {
   // Everything here depends on the client's clock/geolocation/localStorage,
@@ -27,6 +27,8 @@ export default function Home() {
 
   const locationState = useLocation();
   const astro = useAstroState(locationState.location);
+  const sunLongitude = astro.planets.find((p) => p.body === "Sun")?.eclipticLongitude ?? 0;
+  const moonLongitude = astro.planets.find((p) => p.body === "Moon")?.eclipticLongitude ?? 0;
 
   if (!mounted) {
     return <div className="flex min-h-screen items-center justify-center bg-black text-neutral-500">Loading…</div>;
@@ -36,23 +38,32 @@ export default function Home() {
     <div className="flex min-h-screen flex-1 flex-col items-center gap-6 bg-black p-6 text-neutral-100">
       <div className="flex w-full flex-1 flex-col items-center gap-3 lg:flex-row lg:items-stretch lg:justify-center">
         <div className="order-2 flex w-full flex-col gap-3 lg:order-1 lg:w-[36rem]">
-          <ClockCard locationState={locationState} />
-          <WeatherCard location={locationState.location} />
-          {/* Hidden at the lg breakpoint and up - the wheel's hover
-              tooltips cover this same information there. Kept below lg,
-              where the wheel has no hover (touch has no hover state). */}
-          <div className="lg:hidden">
-            <SunCard location={locationState.location} now={astro.now} />
+          <div className="flex items-stretch gap-3">
+            <div className="min-w-0 flex-1 [&>div]:h-full">
+              <ClockCard locationState={locationState} />
+            </div>
+            <div className="min-w-0 flex-1 [&>div]:h-full">
+              <WeatherCard location={locationState.location} />
+            </div>
           </div>
-          <div className="lg:hidden">
-            <MoonCard location={locationState.location} now={astro.now} mode={astro.mode} />
+          <div className="flex items-stretch gap-3">
+            <div className="min-w-0 flex-1 [&>div]:h-full">
+              <SunCard longitude={sunLongitude} location={locationState.location} now={astro.now} />
+            </div>
+            <div className="min-w-0 flex-1 [&>div]:h-full">
+              <MoonCard longitude={moonLongitude} location={locationState.location} now={astro.now} />
+            </div>
           </div>
-          <RhythmCard location={locationState.location} now={astro.now} />
           {/* flex-1 + the inner Card stretched to h-full - so this card's
               bottom edge always lines up with the wheel's, however much
               vertical room is left over above it. */}
-          <div className="lg:flex-1 lg:[&>div]:h-full">
-            <AspectsCard now={astro.now} />
+          <div className="flex items-stretch gap-3 lg:flex-1">
+            <div className="min-w-0 flex-1 lg:[&>div]:h-full">
+              <AspectsCard now={astro.now} />
+            </div>
+            <div className="min-w-0 flex-1 lg:[&>div]:h-full">
+              <SatelliteCard location={locationState.location} />
+            </div>
           </div>
         </div>
 

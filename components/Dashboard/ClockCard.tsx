@@ -39,7 +39,7 @@ export function ClockCard({ locationState }: { locationState: UseLocationResult 
           <div className="text-4xl font-mono tabular-nums" style={{ color: PLANET_COLORS.Sun }}>
             {TIME_FORMATTER.formatToParts(now).map((part, i) =>
               part.type === "dayPeriod" ? (
-                <span key={i} className="text-xl">
+                <span key={i} className="text-sm">
                   {part.value}
                 </span>
               ) : (
@@ -48,7 +48,7 @@ export function ClockCard({ locationState }: { locationState: UseLocationResult 
             )}
           </div>
           <div className="text-sm text-neutral-400">
-            {now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
           </div>
           <div className="text-xs text-neutral-500">
             {now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "UTC" })} UTC
@@ -58,15 +58,15 @@ export function ClockCard({ locationState }: { locationState: UseLocationResult 
         <div className="text-4xl font-mono tabular-nums text-neutral-600">--:--</div>
       )}
 
-      <div className="mt-2">
+      <div className="mt-1.5">
         {location ? (
-          <div className="text-sm">
+          <div className="text-sm text-neutral-300">
             {location.label || `${location.latitude.toFixed(3)}°, ${location.longitude.toFixed(3)}°`}
           </div>
         ) : loading ? (
-          <div className="text-sm text-neutral-400">Locating…</div>
+          <div className="text-xs text-neutral-400">Locating…</div>
         ) : (
-          <div className="text-sm text-neutral-400">
+          <div className="text-xs text-neutral-400">
             {error ?? "Location unavailable."}{" "}
             <button type="button" onClick={requestGeolocation} className="underline hover:text-neutral-200">
               Retry
@@ -76,14 +76,14 @@ export function ClockCard({ locationState }: { locationState: UseLocationResult 
       </div>
 
       {location && hour && (
-        <div className="mt-2 flex items-center gap-1.5 text-xs whitespace-nowrap">
-          <span className="text-neutral-400">Planetary hour:</span>
+        <div className="mt-3 flex flex-wrap items-center gap-1 text-xs">
+          <span className="text-neutral-400">Planetary Hour:</span>
           <span className="leading-none" style={{ color: PLANET_COLORS[hour.ruler] }}>
             {PLANET_GLYPHS[hour.ruler]}
           </span>
           <span style={{ color: PLANET_COLORS[hour.ruler] }}>{hour.ruler}</span>
           <span className="text-neutral-400">
-            · {hour.isDaytime ? "Day" : "Night"} hour {hour.isDaytime ? hour.hourNumber : hour.hourNumber - 12} of 12
+            {hour.isDaytime ? "Day" : "Night"} {hour.isDaytime ? hour.hourNumber : hour.hourNumber - 12}/12
           </span>
         </div>
       )}

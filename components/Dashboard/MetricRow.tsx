@@ -25,6 +25,12 @@ import { SEVERITY_COLORS, type MetricDescription } from "@/lib/severity";
  *
  * `nameColor` overrides the label's default neutral color (e.g. distinguishing
  * "Rise" from "Set" at a glance) - it doesn't affect the value or trailing text.
+ *
+ * `wideNoteGap` adds a fixed left margin to the trailing column, independent
+ * of the grid's own `gap-x` - for callers that want the name/value columns
+ * pulled tight together while keeping the value/note boundary comfortably
+ * spaced (a single `gap-x` on the container can't give those two boundaries
+ * different widths). Defaults to false so existing callers are unaffected.
  */
 export function MetricRow({
   name,
@@ -33,6 +39,7 @@ export function MetricRow({
   note,
   stacked = false,
   nameColor,
+  wideNoteGap = false,
 }: {
   name: string;
   value: ReactNode;
@@ -40,10 +47,12 @@ export function MetricRow({
   note?: string;
   stacked?: boolean;
   nameColor?: string;
+  wideNoteGap?: boolean;
 }) {
   const trailing = description?.label ?? note;
   const valueColor = description ? { color: SEVERITY_COLORS[description.severity] } : undefined;
   const nameStyle = nameColor ? { color: nameColor } : undefined;
+  const noteGapClass = wideNoteGap ? "ml-2" : "";
 
   if (stacked) {
     return (
@@ -67,7 +76,7 @@ export function MetricRow({
       <div className="whitespace-nowrap" style={valueColor}>
         {value}
       </div>
-      <div className="min-w-0 text-xs text-neutral-400 break-words">{trailing}</div>
+      <div className={`min-w-0 text-xs text-neutral-400 break-words ${noteGapClass}`}>{trailing}</div>
     </>
   );
 }

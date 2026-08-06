@@ -53,7 +53,7 @@ export function AspectsCard({ now }: { now: Date }) {
       {aspects.length === 0 ? (
         <div className="text-sm text-neutral-400">No major aspects within orb right now.</div>
       ) : (
-        <div className="grid grid-cols-3 gap-x-4 gap-y-1.5">
+        <div className="grid grid-cols-1 gap-y-1.5">
           {aspects.map((aspect) => (
             <AspectRow key={`${aspect.bodyA}-${aspect.bodyB}`} aspect={aspect} />
           ))}

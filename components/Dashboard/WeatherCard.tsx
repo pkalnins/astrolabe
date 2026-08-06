@@ -50,11 +50,11 @@ export function WeatherCard({ location }: { location: GeoLocation | null }) {
               <span className="text-lg leading-none">{describeWeatherCode(data.weatherCode).icon}</span>
               <span>{describeWeatherCode(data.weatherCode).label}</span>
             </div>
-            <div className="col-span-2 col-start-1">
+            <div className="col-span-3">
               <TemperatureSlider low={data.temperatureLowF} high={data.temperatureHighF} current={data.temperatureF} />
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-y-1.5 text-sm">
             <div className="flex items-baseline gap-1.5">
               <span className="text-neutral-400">Humidity</span>
               <ValueWithUnit value={`${data.humidityPercent}`} unit="%" spaced={false} />

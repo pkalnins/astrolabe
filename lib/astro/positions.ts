@@ -41,6 +41,14 @@ function eclipticLongitudeOf(body: CelestialBody, time: Astronomy.AstroTime): nu
   return Astronomy.Ecliptic(vector).elon;
 }
 
+/** Just the longitude, skipping the prior-day sample `getPlanetPosition` uses
+ * for daily motion - for callers (e.g. void-of-course search) that evaluate
+ * many timestamps and don't need motion/retrograde at each one. */
+export function getEclipticLongitude(body: CelestialBody, date: Date): number {
+  const time = Astronomy.MakeTime(date);
+  return normalizeDegrees(eclipticLongitudeOf(body, time));
+}
+
 export function getPlanetPosition(body: CelestialBody, date: Date): PlanetPosition {
   const time = Astronomy.MakeTime(date);
   const priorTime = Astronomy.MakeTime(new Date(date.getTime() - 24 * 3600 * 1000));
