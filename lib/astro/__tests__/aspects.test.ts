@@ -80,9 +80,18 @@ describe("getTransitToNatalAspects", () => {
     const aspects = getTransitToNatalAspects(transiting, natal);
     // Sun(0)-Moon(1): exact conjunction, 1 degree orb. Sun(0)-Mars(90): exact
     // square, 0 orb. Venus(45)-Moon(1) and Venus(45)-Mars(90) are both 44-45
-    // degrees off any of the five aspect angles - outside the 6-degree orb.
+    // degrees off any of the five aspect angles - outside the 3-degree orb.
     expect(aspects).toHaveLength(2);
     expect(aspects[0]).toMatchObject({ transitingBody: "Sun", natalBody: "Mars", type: "square", orb: 0 });
     expect(aspects[1]).toMatchObject({ transitingBody: "Sun", natalBody: "Moon", type: "conjunction", orb: 1 });
+  });
+
+  it("uses a tighter orb than natal-to-natal aspects", () => {
+    // 4 degrees off conjunction: within getCurrentAspects' 6-degree orb, but
+    // outside transit-to-natal's tighter 3-degree one.
+    const transiting = [planet("Saturn", 4)];
+    const natal = [planet("Sun", 0)];
+
+    expect(getTransitToNatalAspects(transiting, natal)).toHaveLength(0);
   });
 });

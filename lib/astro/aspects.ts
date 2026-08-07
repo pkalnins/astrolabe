@@ -20,15 +20,22 @@ const ASPECT_DEFINITIONS: AspectDefinition[] = [
   { type: "opposition", angle: 180, glyph: "☍" },
 ];
 const ORB_DEGREES = 6;
+// Tighter than the natal orb above - transit-to-natal aspects are read as a
+// specific, time-bounded moment of contact rather than a permanent chart
+// feature, so convention calls for a narrower window than natal-to-natal
+// aspects use. Still one flat value rather than the traditional per-body
+// table (e.g. wider for the Sun/Moon, narrower for the outer planets),
+// matching this app's existing single-orb simplicity.
+const TRANSIT_ORB_DEGREES = 3;
 
-/** The tightest aspect (if any, within ORB_DEGREES) between two longitudes. */
-function closestAspect(longitudeA: number, longitudeB: number): { def: AspectDefinition; orb: number } | null {
+/** The tightest aspect (if any, within `orbDegrees`) between two longitudes. */
+function closestAspect(longitudeA: number, longitudeB: number, orbDegrees: number): { def: AspectDefinition; orb: number } | null {
   const separation = Math.abs(signedDelta(longitudeA, longitudeB));
 
   let closest: { def: AspectDefinition; orb: number } | null = null;
   for (const def of ASPECT_DEFINITIONS) {
     const orb = Math.abs(separation - def.angle);
-    if (orb <= ORB_DEGREES && (!closest || orb < closest.orb)) {
+    if (orb <= orbDegrees && (!closest || orb < closest.orb)) {
       closest = { def, orb };
     }
   }
@@ -56,7 +63,7 @@ export function getCurrentAspects(date: Date): Aspect[] {
 
   for (let i = 0; i < positions.length; i++) {
     for (let j = i + 1; j < positions.length; j++) {
-      const closest = closestAspect(positions[i].eclipticLongitude, positions[j].eclipticLongitude);
+      const closest = closestAspect(positions[i].eclipticLongitude, positions[j].eclipticLongitude, ORB_DEGREES);
       if (closest) {
         aspects.push({
           bodyA: positions[i].body,
@@ -102,7 +109,7 @@ export function getTransitToNatalAspects(transitingPlanets: PlanetPosition[], na
 
   for (const transiting of transitingPlanets) {
     for (const natal of natalPlanets) {
-      const closest = closestAspect(transiting.eclipticLongitude, natal.eclipticLongitude);
+      const closest = closestAspect(transiting.eclipticLongitude, natal.eclipticLongitude, TRANSIT_ORB_DEGREES);
       if (closest) {
         aspects.push({
           transitingBody: transiting.body,
