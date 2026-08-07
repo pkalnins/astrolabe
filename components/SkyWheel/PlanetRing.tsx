@@ -1,6 +1,6 @@
 import type { CelestialBody, PlanetPosition } from "@/lib/astro/positions";
 import type { MoonPhaseInfo } from "@/lib/astro/moonPhase";
-import { polarToPoint, screenAngle } from "./geometry";
+import { declutterAngles, polarToPoint, screenAngle } from "./geometry";
 import { PLANET_GLYPHS, PLANET_COLORS, SYMBOL_FONT_FAMILY } from "./glyphs";
 import { isOuterPlanet, OuterPlanetIcon } from "./OuterPlanetIcons";
 import { MoonPhaseIcon } from "./MoonPhaseIcon";
@@ -21,16 +21,33 @@ export interface PlanetRingProps {
 
 const RETROGRADE_STROKE = "#ef4444";
 const GLYPH_COLOR = "#ffffff";
+// Extra breathing room beyond the bare minimum needed for two markers not to
+// touch, so crowded bodies read as visually distinct rather than merely
+// non-overlapping.
+const MIN_SEPARATION_BUFFER = 1.4;
 
 function colorFor(planet: PlanetPosition): string {
   return PLANET_COLORS[planet.body];
 }
 
 export function PlanetRing({ cx, cy, radius, ascendant, planets, circleRadius, moonPhase, onHover }: PlanetRingProps) {
+  // Most rings here only ever hold one or two bodies (the current-sky
+  // per-planet spheres), where this is a no-op - it only actually does
+  // anything once several bodies share one ring, like Explore Transits
+  // mode's consolidated transiting-planets ring, or a tight real conjunction
+  // on the 3-body trans-Saturnian ring.
+  const rawAngles = planets.map((planet) => screenAngle(planet.eclipticLongitude, ascendant));
+  // Degrees of arc needed between two markers at this radius to keep their
+  // circles from visually touching - smaller rings need more angular
+  // separation for the same physical gap, so this scales with radius rather
+  // than being a flat constant shared across every ring PlanetRing draws.
+  const minSeparationDeg = ((2 * circleRadius) / (2 * Math.PI * radius)) * 360 * MIN_SEPARATION_BUFFER;
+  const angles = declutterAngles(rawAngles, minSeparationDeg);
+
   return (
     <g>
-      {planets.map((planet) => {
-        const angle = screenAngle(planet.eclipticLongitude, ascendant);
+      {planets.map((planet, i) => {
+        const angle = angles[i];
         const point = polarToPoint(cx, cy, radius, angle);
         const badgeColor = colorFor(planet);
         const hoverProps = {
