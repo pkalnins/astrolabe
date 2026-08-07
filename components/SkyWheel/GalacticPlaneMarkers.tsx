@@ -46,7 +46,16 @@ export function GalacticPlaneMarkers({ cx, cy, radius, ascendant, nodes }: Galac
               fill={MARKER_COLOR}
               fillOpacity={0.85}
             >
-              Galactic Plane
+              {/* Two lines rather than one - a single "Galactic Plane" line
+                  is wide enough to run into a fixed-star name sitting at a
+                  nearby angle on this same label ring; stacking it narrows
+                  the horizontal footprint at the cost of a little height. */}
+              <tspan x={labelPoint.x} dy="-6">
+                Galactic
+              </tspan>
+              <tspan x={labelPoint.x} dy="12">
+                Plane
+              </tspan>
             </text>
           </g>
         );

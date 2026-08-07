@@ -6,23 +6,33 @@ import { getMoonPhase } from "@/lib/astro/moonPhase";
 import { FIXED_STARS, getFixedStarPositions } from "@/lib/astro/fixedStars";
 import { getGalacticPlaneNodes } from "@/lib/astro/galacticPlane";
 import { getLunarNodes } from "@/lib/astro/lunarNodes";
-import { getCurrentAspects } from "@/lib/astro/aspects";
+import { getCurrentAspects, getTransitToNatalAspects } from "@/lib/astro/aspects";
 import { toSidereal } from "@/lib/astro/ayanamsa";
-import { signedDelta } from "@/lib/astro/math";
+import { normalizeDegrees, signedDelta } from "@/lib/astro/math";
 import { getZodiacPosition } from "@/lib/astro/zodiac";
+import type { HouseSystem } from "@/lib/astro/houses";
 import type { GeoLocation } from "@/lib/astro/location";
 import type { ZodiacMode } from "@/lib/hooks/useAstroState";
+import type { NatalChart } from "@/lib/hooks/useNatalChart";
+import { useHouseCusps } from "@/lib/hooks/useHouseCusps";
 import { ZodiacRing } from "./ZodiacRing";
 import { PlanetRing } from "./PlanetRing";
 import { FixedStarsRing } from "./FixedStarsRing";
 import { GalacticPlaneMarkers } from "./GalacticPlaneMarkers";
+import { NatalRing, type NatalHoverTarget } from "./NatalRing";
 import { RadialHands } from "./RadialHands";
 import { SunTooltip } from "./SunTooltip";
 import { MoonTooltip } from "./MoonTooltip";
 import { PlanetTooltip } from "./PlanetTooltip";
+import { NatalPlanetTooltip } from "./NatalPlanetTooltip";
 import { LunarNodeTooltip } from "./LunarNodeTooltip";
 import { polarToPoint, radialTickPath, screenAngle } from "./geometry";
-import { LUNAR_NODE_GLYPHS, SYMBOL_FONT_FAMILY } from "./glyphs";
+import { LUNAR_NODE_GLYPHS, PLANET_COLORS, SYMBOL_FONT_FAMILY } from "./glyphs";
+
+// Controlled from the parent (like `mode`/`onModeChange`) rather than local
+// state, since other dashboard pieces - e.g. the Aspects card - need to know
+// when Natal Chart mode is active to switch to showing natal aspects too.
+export type SkyWheelDisplayMode = "current" | "natal" | "transits";
 
 export interface SkyWheelProps {
   planets: PlanetPosition[];
@@ -33,6 +43,16 @@ export interface SkyWheelProps {
   onModeChange: (mode: ZodiacMode) => void;
   now: Date;
   location: GeoLocation | null;
+  /** Unlocks the Natal Chart and Explore Transits display modes (see
+      `displayMode` below) - without it, only Current Sky is available. */
+  natalChart?: NatalChart | null;
+  displayMode: SkyWheelDisplayMode;
+  onDisplayModeChange: (mode: SkyWheelDisplayMode) => void;
+  // Controlled like `displayMode` - a natal positions table elsewhere on the
+  // dashboard needs to report houses using this same system, not silently
+  // disagree with whatever the wheel itself is showing.
+  houseSystem: HouseSystem;
+  onHouseSystemChange: (system: HouseSystem) => void;
   size?: number;
 }
 
@@ -41,13 +61,32 @@ function formatDegree(longitude: number): string {
   return `${sign.glyph} ${Math.floor(degreeInSign)}°`;
 }
 
-// Extra margin (beyond the zodiac ring itself) so the fixed-star name labels
-// have room without clipping the SVG edge. Labels are center-anchored on
-// the label ring, so only half of the widest label ("Deneb Algedi", ~55 SVG
-// units wide at fontSize 11) extends past the ring in the worst case (the
-// label sitting due left/right of center): ring offset (60) + label ring gap
-// (26) + half the longest label (~27), plus about 13% buffer for
-// font/rendering variance across platforms.
+// Shared styling for every corner button (mode buttons and on/off toggles
+// alike) - fixed width so the two stacked columns line up cleanly regardless
+// of label length, and a blue outline for whichever is currently active.
+function wheelButtonClass(position: string, active: boolean, disabled = false): string {
+  return [
+    "absolute z-10 w-24 rounded-full border px-3 py-1 text-center text-xs uppercase tracking-wide",
+    position,
+    disabled ? "cursor-not-allowed opacity-40" : "hover:bg-neutral-800",
+    active ? "border-blue-500 text-blue-300" : "border-neutral-800 text-neutral-600",
+  ].join(" ");
+}
+
+// The house-system pair sits below the Houses toggle, only when it's on -
+// smaller and unpositioned itself (its parent wrapper carries the absolute
+// placement) since it's a secondary, nested choice rather than a peer of the
+// six corner buttons above it.
+function houseSystemButtonClass(active: boolean): string {
+  return `w-24 rounded-full border px-2 py-0.5 text-center text-[10px] uppercase tracking-wide hover:bg-neutral-800 ${
+    active ? "border-green-500 text-green-300" : "border-neutral-800 text-neutral-600"
+  }`;
+}
+
+// Extra margin (beyond the zodiac ring itself) so the outermost labels have
+// room without clipping the SVG edge. The furthest-out text is now ASC/DSC's,
+// out on their own spoke (see ASC_DSC_MC_RADIUS below) rather than the
+// fixed-star names, which sit closer in - but 130 comfortably covers either.
 const EXTRA_MARGIN = 130;
 const ZODIAC_OUTER_RADIUS = 218;
 const VIEWBOX_W = ZODIAC_OUTER_RADIUS * 2 + EXTRA_MARGIN * 2;
@@ -55,11 +94,15 @@ const VIEWBOX_H = ZODIAC_OUTER_RADIUS * 2 + EXTRA_MARGIN * 2;
 const CENTER_X = VIEWBOX_W / 2;
 const CENTER_Y = VIEWBOX_H / 2;
 const ZODIAC_INNER_RADIUS = ZODIAC_OUTER_RADIUS - 46;
-// +60 (not closer) so the star ring stays clear of the ASC/DSC label block:
-// the wheel's rotation periodically brings a star's screen angle right up
-// against 0/180 degrees, where ASC/DSC always sit - too close and the
-// labels collide/run together.
-const FIXED_STARS_RING_RADIUS = ZODIAC_OUTER_RADIUS + 60;
+// Fixed stars sit close to the zodiac ring itself - their marker/label pair
+// occupies its own inner radius band, well short of where ASC/DSC/MC's own
+// labels start (see ASC_DSC_MC_RADIUS below), so the two never collide even
+// when a star's screen angle lands right on 0/180 degrees.
+const FIXED_STARS_RING_RADIUS = ZODIAC_OUTER_RADIUS + 14;
+// ASC/DSC/MC are pushed out past the fixed-star ring - a full radial spoke
+// from the zodiac ring out to each label, so they still read as pointers to
+// an exact degree despite sitting further out than they used to.
+const ASC_DSC_MC_RADIUS = ZODIAC_OUTER_RADIUS + 60;
 const EARTH_RADIUS = 20;
 // Slate, deliberately neutral/muted - distinct from the amber ASC/DSC/MC
 // ticks and the lavender galactic-plane markers on the ring further out.
@@ -106,17 +149,94 @@ const RING_RADIUS_BY_BODY: Record<(typeof GEOCENTRIC_RING_ORDER)[number], number
   Saturn: SATURN_RING_RADIUS,
 };
 
+// In Explore Transits mode, natal planets share one ring rather than each
+// getting their own - the innermost ring (Moon's, ~37 units out) is too
+// tight for that: two bodies need roughly 23 degrees of separation there
+// just to avoid their markers visually touching, which real natal charts
+// routinely violate (any conjunction, or even a loose stellium). The Saturn
+// ring position needs only ~6 degrees instead, matching what the outermost
+// (trans-Saturnian) ring already gets for the transiting side - while still
+// leaving one ring-step of visible gap before it for the transit-to-natal
+// aspect lines to cross.
+const NATAL_RING_RADIUS_IN_TRANSITS_MODE = SATURN_RING_RADIUS;
+
 // Same marker size everywhere, shared across all rings rather than scaled
 // off any one ring's radius - small enough that adjacent rings' markers
 // don't touch even when two bodies land at the same longitude.
 const PLANET_MARKER_RADIUS = 7.5;
 
-export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onModeChange, now, location, size = 820 }: SkyWheelProps) {
+// House numbers sit just inside the zodiac ring, in the same gap that
+// separates it from the trans-Saturnian ring - close enough to read as
+// belonging to the ring's own boundary lines, without landing on top of the
+// trans-Saturnian planet markers just past it.
+const HOUSE_NUMBER_RADIUS = ZODIAC_INNER_RADIUS - INNER_RING_GAP * 0.4;
+const HOUSE_LINE_COLOR = "currentColor";
+
+export function SkyWheel({
+  planets,
+  ascendant: liveAscendant,
+  descendant: liveDescendant,
+  midheaven: liveMidheaven,
+  mode,
+  onModeChange,
+  now,
+  location,
+  natalChart,
+  displayMode,
+  onDisplayModeChange,
+  houseSystem,
+  onHouseSystemChange,
+  size = 820,
+}: SkyWheelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const eventToContainerPos = (event: React.MouseEvent<SVGGElement>): { x: number; y: number } | null => {
     const rect = containerRef.current?.getBoundingClientRect();
     return rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null;
   };
+
+  // On by default.
+  const [showFixedStars, setShowFixedStars] = useState(true);
+  const [showHouses, setShowHouses] = useState(true);
+
+  // Three mutually-exclusive display modes:
+  // - "current": today's default - live sky, live location, the classic
+  //   per-planet-ring "orrery" layout.
+  // - "natal": the exact same orrery layout and rendering path as "current",
+  //   just fed the birth instant/location/planets instead of live ones - so
+  //   it reads as "what the sky looked like at the moment you were born."
+  // - "transits": the biwheel - natal planets on one ring, live transiting
+  //   planets on another, zodiac aligned to the natal ascendant, with
+  //   hover-triggered transit-to-natal aspect lines between the two.
+  // The latter two need a natal chart to mean anything; their buttons stay
+  // visible but disabled without one, rather than shifting layout by hiding.
+  const inNatalMode = displayMode === "natal" && Boolean(natalChart);
+  const inTransitsMode = displayMode === "transits" && Boolean(natalChart);
+
+  // Natal-vs-live angles, resolved once here so every other computation
+  // below can keep referring to plain `ascendant`/`descendant`/`midheaven`
+  // regardless of which mode is active. Both Natal Chart and Explore
+  // Transits anchor the wheel to the natal chart's own angles.
+  const useNatalFrame = (inNatalMode || inTransitsMode) && natalChart;
+  const ascendant = useNatalFrame ? natalChart.ascendant : liveAscendant;
+  const descendant = useNatalFrame ? natalChart.descendant : liveDescendant;
+  const midheaven = useNatalFrame ? natalChart.midheaven : liveMidheaven;
+  // Placidus needs the actual date/place behind whichever angles are active,
+  // not just the ascendant - same natal-vs-live split as above.
+  const houseDate = useNatalFrame ? natalChart.birthInstant : now;
+  const houseLocation = useNatalFrame ? natalChart.location : location;
+  // The single time/planets set that "the displayed chart" uses - the birth
+  // instant/placements in Natal Chart mode, live otherwise. Explore Transits
+  // never uses these (it renders both charts explicitly), so this only
+  // matters for the "current" vs "natal" shared rendering path. Natal mode's
+  // tooltips deliberately avoid needing the birth *location* too - see
+  // NatalPlanetTooltip's use below.
+  const referenceTime = inNatalMode && natalChart ? natalChart.birthInstant : now;
+  const effectivePlanets = inNatalMode && natalChart ? natalChart.planets : planets;
+  // Current transiting planets/nodes share one ring - the innermost (usually
+  // the Moon's own individual ring) in Current Sky/Natal Chart modes, or the
+  // outermost (trans-Saturnian) ring once natal planets have taken over the
+  // innermost one in Explore Transits mode.
+  const currentBodiesRadius = inTransitsMode ? TRANS_SATURNIAN_RING_RADIUS : MOON_RING_RADIUS;
 
   const [hovered, setHovered] = useState<{ body: CelestialBody; x: number; y: number } | null>(null);
   const handlePlanetHover = (body: CelestialBody, event: React.MouseEvent<SVGGElement> | null) => {
@@ -137,41 +257,64 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
   const handleSouthNodeEnter = (event: React.MouseEvent<SVGGElement>) => handleNodeHover("south", event);
   const handleSouthNodeLeave = () => handleNodeHover("south", null);
 
-  const ascPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 10, 180);
-  const dscPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 10, 0);
+  const [hoveredNatal, setHoveredNatal] = useState<{ target: NatalHoverTarget; x: number; y: number } | null>(null);
+  const handleNatalHover = (target: NatalHoverTarget, event: React.MouseEvent<SVGGElement> | null) => {
+    const pos = event && eventToContainerPos(event);
+    setHoveredNatal(pos ? { target, ...pos } : null);
+  };
+
+  const ascPoint = polarToPoint(CENTER_X, CENTER_Y, ASC_DSC_MC_RADIUS, 180);
+  const dscPoint = polarToPoint(CENTER_X, CENTER_Y, ASC_DSC_MC_RADIUS, 0);
   // Unlike ASC/DSC, MC isn't pinned to a fixed screen angle - its angular
   // distance from the ascendant varies with latitude and time of day. A
-  // small tick right on the ring marks its exact degree, so the label
+  // tick along its own radial spoke marks its exact degree, so the label
   // itself can sit a bit closer in without losing precision.
   const mcAngle = screenAngle(midheaven, ascendant);
-  const mcPoint = polarToPoint(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS + 6, mcAngle);
-  const moonPhase = useMemo(() => getMoonPhase(now), [now]);
+  const mcPoint = polarToPoint(CENTER_X, CENTER_Y, ASC_DSC_MC_RADIUS - 4, mcAngle);
+  // The Imum Coeli - MC's opposite, exactly 180 degrees away and thus always
+  // MC's own screen angle plus 180 (adding 180 to a longitude commutes with
+  // the sidereal/tropical shift, so this needs no separate mode handling).
+  const imumCoeli = normalizeDegrees(midheaven + 180);
+  const icAngle = mcAngle + 180;
+  const icPoint = polarToPoint(CENTER_X, CENTER_Y, ASC_DSC_MC_RADIUS - 4, icAngle);
+  // Moon phase, fixed stars, and the galactic plane are all generic
+  // "position at a given time" computations with no natal-specific storage
+  // of their own (unlike planets/nodes/angles, which the natal chart already
+  // carries pre-computed) - so these key off `referenceTime` directly to
+  // pick up Natal Chart mode's birth instant, same as everything else here.
+  const moonPhase = useMemo(() => getMoonPhase(referenceTime), [referenceTime]);
+  const houseCusps = useHouseCusps(houseSystem, houseDate, houseLocation, ascendant, mode);
 
   const fixedStars = useMemo(() => {
-    const tropical = getFixedStarPositions(now, FIXED_STARS);
+    const tropical = getFixedStarPositions(referenceTime, FIXED_STARS);
     if (mode === "tropical") return tropical;
-    return tropical.map((star) => ({ ...star, eclipticLongitude: toSidereal(star.eclipticLongitude, now) }));
-  }, [now, mode]);
+    return tropical.map((star) => ({ ...star, eclipticLongitude: toSidereal(star.eclipticLongitude, referenceTime) }));
+  }, [referenceTime, mode]);
 
   const galacticPlaneNodes = useMemo(() => {
-    const tropical = getGalacticPlaneNodes(now);
+    const tropical = getGalacticPlaneNodes(referenceTime);
     if (mode === "tropical") return tropical;
-    return tropical.map((node) => ({ ...node, eclipticLongitude: toSidereal(node.eclipticLongitude, now) }));
-  }, [now, mode]);
+    return tropical.map((node) => ({ ...node, eclipticLongitude: toSidereal(node.eclipticLongitude, referenceTime) }));
+  }, [referenceTime, mode]);
 
+  // Current transiting lunar nodes, shown on whichever ring the transiting
+  // Moon itself is currently sharing - or, in Natal Chart mode (where
+  // `referenceTime` is the birth instant), the natal nodes, which this
+  // computes identically to how useNatalChart derives its own (same
+  // function, same conversion), so the two never diverge.
   const lunarNodes = useMemo(() => {
-    const tropical = getLunarNodes(now);
+    const tropical = getLunarNodes(referenceTime);
     if (mode === "tropical") return tropical;
     return {
-      northNodeLongitude: toSidereal(tropical.northNodeLongitude, now),
-      southNodeLongitude: toSidereal(tropical.southNodeLongitude, now),
+      northNodeLongitude: toSidereal(tropical.northNodeLongitude, referenceTime),
+      southNodeLongitude: toSidereal(tropical.southNodeLongitude, referenceTime),
     };
-  }, [now, mode]);
+  }, [referenceTime, mode]);
 
-  const sun = planets.filter((p) => p.body === "Sun");
-  const moon = planets.filter((p) => p.body === "Moon");
-  const transSaturnian = planets.filter((p) => TRANS_SATURNIAN_BODIES.has(p.body));
-  const hoveredPlanet = hovered ? planets.find((p) => p.body === hovered.body) : undefined;
+  const sun = effectivePlanets.filter((p) => p.body === "Sun");
+  const moon = effectivePlanets.filter((p) => p.body === "Moon");
+  const transSaturnian = effectivePlanets.filter((p) => TRANS_SATURNIAN_BODIES.has(p.body));
+  const hoveredPlanet = hovered ? effectivePlanets.find((p) => p.body === hovered.body) : undefined;
   // Sun/Moon already get a permanent hand each - only add the hovered body's
   // hand on top of those when it's some other planet, so hovering Sun/Moon
   // itself doesn't draw a duplicate.
@@ -187,13 +330,68 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
   const aspectedPlanets = useMemo(() => {
     if (!hoveredPlanet) return [];
     const aspectedBodies = new Set(
-      getCurrentAspects(now)
+      getCurrentAspects(referenceTime)
         .filter((a) => a.bodyA === hoveredPlanet.body || a.bodyB === hoveredPlanet.body)
         .map((a) => (a.bodyA === hoveredPlanet.body ? a.bodyB : a.bodyA)),
     );
-    return planets.filter((p) => aspectedBodies.has(p.body) && !handBodies.has(p.body));
+    return effectivePlanets.filter((p) => aspectedBodies.has(p.body) && !handBodies.has(p.body));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [now, hoveredPlanet?.body, planets]);
+  }, [referenceTime, hoveredPlanet?.body, effectivePlanets]);
+
+  // Explore Transits' whole point: which transiting bodies are currently
+  // aspecting a natal placement, and vice versa. Drawn as dashed lines
+  // straight across the (otherwise empty) middle rings, but only for
+  // whichever single body is currently hovered - showing every transit's
+  // every natal aspect at once would be as cluttered as permanently drawing
+  // every current-to-current aspect line already is, which this app has
+  // always avoided in favor of the same hover-to-reveal pattern.
+  //
+  // Not memoized: it's a handful of pairwise comparisons at most (one
+  // hovered body against up to 10 natal placements, or vice versa), cheap
+  // enough to recompute every render without needing useMemo's bookkeeping.
+  function computeTransitNatalAspectLines() {
+    const natal = natalChart;
+    if (!inTransitsMode || !natal) return [];
+
+    if (hoveredPlanet) {
+      const fromPoint = polarToPoint(CENTER_X, CENTER_Y, currentBodiesRadius, screenAngle(hoveredPlanet.eclipticLongitude, ascendant));
+      return getTransitToNatalAspects([hoveredPlanet], natal.planets).flatMap((aspect) => {
+        const natalPlanet = natal.planets.find((p) => p.body === aspect.natalBody);
+        if (!natalPlanet) return [];
+        return [
+          {
+            key: `${aspect.transitingBody}-${aspect.natalBody}`,
+            from: fromPoint,
+            to: polarToPoint(CENTER_X, CENTER_Y, NATAL_RING_RADIUS_IN_TRANSITS_MODE, screenAngle(natalPlanet.eclipticLongitude, ascendant)),
+            color: PLANET_COLORS[aspect.natalBody],
+          },
+        ];
+      });
+    }
+
+    const hoveredNatalTarget = hoveredNatal?.target;
+    if (hoveredNatalTarget?.kind === "planet") {
+      const natalPlanet = natal.planets.find((p) => p.body === hoveredNatalTarget.body);
+      if (natalPlanet) {
+        const fromPoint = polarToPoint(CENTER_X, CENTER_Y, NATAL_RING_RADIUS_IN_TRANSITS_MODE, screenAngle(natalPlanet.eclipticLongitude, ascendant));
+        return getTransitToNatalAspects(planets, [natalPlanet]).flatMap((aspect) => {
+          const transitingPlanet = planets.find((p) => p.body === aspect.transitingBody);
+          if (!transitingPlanet) return [];
+          return [
+            {
+              key: `${aspect.transitingBody}-${aspect.natalBody}`,
+              from: fromPoint,
+              to: polarToPoint(CENTER_X, CENTER_Y, currentBodiesRadius, screenAngle(transitingPlanet.eclipticLongitude, ascendant)),
+              color: PLANET_COLORS[aspect.transitingBody],
+            },
+          ];
+        });
+      }
+    }
+
+    return [];
+  }
+  const transitNatalAspectLines = computeTransitNatalAspectLines();
 
   return (
     <div
@@ -201,13 +399,69 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
       className="relative w-full text-neutral-200"
       style={{ "--wheel-bg": "#0a0a12", maxWidth: size } as React.CSSProperties}
     >
+      {/* Left stack: the three mutually-exclusive display modes. Natal
+          Chart/Transits need a natal chart to mean anything - disabled
+          (not hidden) without one, so this stack never shifts position. */}
+      <button
+        type="button"
+        onClick={() => onDisplayModeChange("current")}
+        className={wheelButtonClass("top-0 left-0", displayMode === "current")}
+      >
+        Current
+      </button>
+      <button
+        type="button"
+        onClick={() => onDisplayModeChange("natal")}
+        disabled={!natalChart}
+        className={wheelButtonClass("top-9 left-0", displayMode === "natal", !natalChart)}
+      >
+        Natal
+      </button>
+      <button
+        type="button"
+        onClick={() => onDisplayModeChange("transits")}
+        disabled={!natalChart}
+        className={wheelButtonClass("top-[4.5rem] left-0", displayMode === "transits", !natalChart)}
+      >
+        Transits
+      </button>
+
+      {/* Right stack: independent on/off toggles, orthogonal to the mode. */}
       <button
         type="button"
         onClick={() => onModeChange(mode === "tropical" ? "sidereal" : "tropical")}
-        className="absolute top-0 right-0 z-10 rounded-full border border-neutral-600 px-3 py-1 text-xs uppercase tracking-wide text-neutral-300 hover:bg-neutral-800"
+        className={wheelButtonClass("top-0 right-0", true)}
       >
         {mode}
       </button>
+      <button type="button" onClick={() => setShowFixedStars((v) => !v)} className={wheelButtonClass("top-9 right-0", showFixedStars)}>
+        Stars
+      </button>
+      <button
+        type="button"
+        onClick={() => setShowHouses((v) => !v)}
+        className={wheelButtonClass("top-[4.5rem] right-0", showHouses)}
+      >
+        Houses
+      </button>
+      {showHouses && (
+        <div className="absolute top-[6.75rem] right-0 z-10 flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => onHouseSystemChange("whole-sign")}
+            className={houseSystemButtonClass(houseSystem === "whole-sign")}
+          >
+            Whole
+          </button>
+          <button
+            type="button"
+            onClick={() => onHouseSystemChange("placidus")}
+            className={houseSystemButtonClass(houseSystem === "placidus")}
+          >
+            Placidus
+          </button>
+        </div>
+      )}
       <svg viewBox={`0 0 ${VIEWBOX_W} ${VIEWBOX_H}`} className="aspect-square w-full">
         {/* The horizon is the horizontal line through Ascendant (left) /
             Descendant (right) once rotated - shown purely via shading rather
@@ -236,22 +490,66 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
           ascendant={ascendant}
         />
 
-        <circle
-          cx={CENTER_X}
-          cy={CENTER_Y}
-          r={FIXED_STARS_RING_RADIUS}
-          fill="none"
-          stroke="currentColor"
-          strokeOpacity={0.15}
-        />
-        <FixedStarsRing cx={CENTER_X} cy={CENTER_Y} radius={FIXED_STARS_RING_RADIUS} ascendant={ascendant} stars={fixedStars} />
-        <GalacticPlaneMarkers
-          cx={CENTER_X}
-          cy={CENTER_Y}
-          radius={FIXED_STARS_RING_RADIUS}
-          ascendant={ascendant}
-          nodes={galacticPlaneNodes}
-        />
+        {/* Whole Sign house divisions - each line sits at a sign boundary
+            (the same angles ZodiacRing draws within its own band), extended
+            inward from the ring to Earth rather than out to the ASC/DSC/MC
+            spoke: house cusps are anchored to sign boundaries, not to the
+            ascendant's exact degree, so anchoring the lines out there would
+            misleadingly suggest otherwise. Drawn behind the planet rings,
+            same treatment as the RadialHands lines they parallel. */}
+        {showHouses && (
+          <g>
+            {houseCusps.map(({ house, longitude }) => {
+              const lineAngle = screenAngle(longitude, ascendant);
+              const numberAngle = screenAngle(normalizeDegrees(longitude + 15), ascendant);
+              const numberPoint = polarToPoint(CENTER_X, CENTER_Y, HOUSE_NUMBER_RADIUS, numberAngle);
+              return (
+                <g key={house}>
+                  <path
+                    d={radialTickPath(CENTER_X, CENTER_Y, 0, ZODIAC_INNER_RADIUS, lineAngle)}
+                    stroke={HOUSE_LINE_COLOR}
+                    strokeOpacity={0.25}
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={numberPoint.x}
+                    y={numberPoint.y}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={10}
+                    fill={HOUSE_LINE_COLOR}
+                    fillOpacity={0.55}
+                  >
+                    {house}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        )}
+
+        {/* Spokes from the ring out to ASC/DSC/MC/IC's labels, marking their
+            exact degree. Drawn faint and beneath the fixed-star ring so a
+            spoke crossing a star's screen angle never competes with the
+            star's own marker or name for attention. */}
+        <path d={radialTickPath(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS, ASC_DSC_MC_RADIUS - 8, 180)} stroke="#fbbf24" strokeOpacity={0.35} strokeWidth={1.5} />
+        <path d={radialTickPath(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS, ASC_DSC_MC_RADIUS - 8, 0)} stroke="#fbbf24" strokeOpacity={0.35} strokeWidth={1.5} />
+        <path d={radialTickPath(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS, ASC_DSC_MC_RADIUS - 8, mcAngle)} stroke="#fbbf24" strokeOpacity={0.35} strokeWidth={1.5} />
+        <path d={radialTickPath(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS, ASC_DSC_MC_RADIUS - 8, icAngle)} stroke="#fbbf24" strokeOpacity={0.35} strokeWidth={1.5} />
+
+        {showFixedStars && (
+          <>
+            <circle cx={CENTER_X} cy={CENTER_Y} r={FIXED_STARS_RING_RADIUS} fill="none" stroke="currentColor" strokeOpacity={0.15} />
+            <FixedStarsRing cx={CENTER_X} cy={CENTER_Y} radius={FIXED_STARS_RING_RADIUS} ascendant={ascendant} stars={fixedStars} />
+            <GalacticPlaneMarkers
+              cx={CENTER_X}
+              cy={CENTER_Y}
+              radius={FIXED_STARS_RING_RADIUS}
+              ascendant={ascendant}
+              nodes={galacticPlaneNodes}
+            />
+          </>
+        )}
 
         {/* Sun/Moon "clock hands" - a thin line from Earth out to the
             zodiac ring, with a small circle where each meets the ring. The
@@ -265,38 +563,89 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
             itself, not just in the tooltip. */}
         <RadialHands cx={CENTER_X} cy={CENTER_Y} radius={ZODIAC_INNER_RADIUS} ascendant={ascendant} planets={aspectedPlanets} dashed />
 
-        {/* Faint guide circles marking each inner ring's path. */}
-        {[TRANS_SATURNIAN_RING_RADIUS, ...Object.values(RING_RADIUS_BY_BODY)].map((r) => (
-          <circle key={r} cx={CENTER_X} cy={CENTER_Y} r={r} fill="none" stroke="currentColor" strokeOpacity={0.15} />
-        ))}
+        {inTransitsMode ? (
+          <>
+            {/* Biwheel layout: natal planets take over the Saturn ring
+                (pushed out from the innermost/Moon ring, which is too tight
+                to hold up to 12 natal bodies without them visually
+                colliding - see NATAL_RING_RADIUS_IN_TRANSITS_MODE), current
+                transiting planets consolidate onto the outermost
+                (trans-Saturnian) ring - the rings below Saturn's sit empty,
+                giving the transit-to-natal aspect lines room to cross
+                between the two without competing with planet markers. */}
+            <circle cx={CENTER_X} cy={CENTER_Y} r={NATAL_RING_RADIUS_IN_TRANSITS_MODE} fill="none" stroke="currentColor" strokeOpacity={0.15} />
+            <circle cx={CENTER_X} cy={CENTER_Y} r={TRANS_SATURNIAN_RING_RADIUS} fill="none" stroke="currentColor" strokeOpacity={0.15} />
 
-        <PlanetRing
-          cx={CENTER_X}
-          cy={CENTER_Y}
-          radius={TRANS_SATURNIAN_RING_RADIUS}
-          ascendant={ascendant}
-          planets={transSaturnian}
-          circleRadius={PLANET_MARKER_RADIUS}
-          onHover={handlePlanetHover}
-        />
-        {GEOCENTRIC_RING_ORDER.map((body) => (
-          <PlanetRing
-            key={body}
-            cx={CENTER_X}
-            cy={CENTER_Y}
-            radius={RING_RADIUS_BY_BODY[body]}
-            ascendant={ascendant}
-            planets={planets.filter((p) => p.body === body)}
-            circleRadius={PLANET_MARKER_RADIUS}
-            moonPhase={body === "Moon" ? moonPhase : undefined}
-            onHover={handlePlanetHover}
-          />
-        ))}
+            {/* Dashed - same "reveal on hover" treatment as the
+                current-to-current aspect hands above, just spanning between
+                the two rings instead of from Earth to one ring. */}
+            {transitNatalAspectLines.map((line) => (
+              <line
+                key={line.key}
+                x1={line.from.x}
+                y1={line.from.y}
+                x2={line.to.x}
+                y2={line.to.y}
+                stroke={line.color}
+                strokeOpacity={0.7}
+                strokeWidth={1.25}
+                strokeDasharray="4 3"
+              />
+            ))}
 
-        {/* Small ticks right on the ring marking ASC/DSC's exact degree,
-            matching the one added for MC below. */}
-        <path d={radialTickPath(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS, ZODIAC_OUTER_RADIUS + 8, 180)} stroke="#fbbf24" strokeWidth={1.5} />
-        <path d={radialTickPath(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS, ZODIAC_OUTER_RADIUS + 8, 0)} stroke="#fbbf24" strokeWidth={1.5} />
+            <NatalRing
+              cx={CENTER_X}
+              cy={CENTER_Y}
+              radius={NATAL_RING_RADIUS_IN_TRANSITS_MODE}
+              ascendant={ascendant}
+              planets={natalChart!.planets}
+              lunarNodes={natalChart!.lunarNodes}
+              moonPhase={getMoonPhase(natalChart!.birthInstant)}
+              circleRadius={PLANET_MARKER_RADIUS}
+              onHover={handleNatalHover}
+            />
+            <PlanetRing
+              cx={CENTER_X}
+              cy={CENTER_Y}
+              radius={TRANS_SATURNIAN_RING_RADIUS}
+              ascendant={ascendant}
+              planets={planets}
+              circleRadius={PLANET_MARKER_RADIUS}
+              moonPhase={moonPhase}
+              onHover={handlePlanetHover}
+            />
+          </>
+        ) : (
+          <>
+            {/* Faint guide circles marking each inner ring's path. */}
+            {[TRANS_SATURNIAN_RING_RADIUS, ...Object.values(RING_RADIUS_BY_BODY)].map((r) => (
+              <circle key={r} cx={CENTER_X} cy={CENTER_Y} r={r} fill="none" stroke="currentColor" strokeOpacity={0.15} />
+            ))}
+
+            <PlanetRing
+              cx={CENTER_X}
+              cy={CENTER_Y}
+              radius={TRANS_SATURNIAN_RING_RADIUS}
+              ascendant={ascendant}
+              planets={transSaturnian}
+              circleRadius={PLANET_MARKER_RADIUS}
+              onHover={handlePlanetHover}
+            />
+            {GEOCENTRIC_RING_ORDER.map((body) => (
+              <PlanetRing
+                key={body}
+                cx={CENTER_X}
+                cy={CENTER_Y}
+                radius={RING_RADIUS_BY_BODY[body]}
+                ascendant={ascendant}
+                planets={effectivePlanets.filter((p) => p.body === body)}
+                circleRadius={PLANET_MARKER_RADIUS}
+                moonPhase={body === "Moon" ? moonPhase : undefined}
+                onHover={handlePlanetHover}
+              />
+            ))}
+          </>
+        )}
 
         {/* Asc/Dsc labels. */}
         <text
@@ -331,8 +680,6 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
             {formatDegree(descendant)}
           </tspan>
         </text>
-        {/* Same tick treatment for MC. */}
-        <path d={radialTickPath(CENTER_X, CENTER_Y, ZODIAC_OUTER_RADIUS, ZODIAC_OUTER_RADIUS + 8, mcAngle)} stroke="#fbbf24" strokeWidth={1.5} />
         <text
           x={mcPoint.x}
           textAnchor="middle"
@@ -354,14 +701,32 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
             {formatDegree(midheaven)}
           </tspan>
         </text>
+        <text
+          x={icPoint.x}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontFamily={SYMBOL_FONT_FAMILY}
+          fill="#fbbf24"
+        >
+          {/* Same "grow away from center" treatment as MC, its opposite. */}
+          <tspan x={icPoint.x} y={icPoint.y + (icPoint.y < CENTER_Y ? -7 : 7)} fontSize={13}>
+            IC
+          </tspan>
+          <tspan x={icPoint.x} y={icPoint.y + (icPoint.y < CENTER_Y ? -18 : 18)} fontSize={11} fillOpacity={0.8}>
+            {formatDegree(imumCoeli)}
+          </tspan>
+        </text>
 
-        {/* Lunar nodes - drawn on the Moon's own ring rather than out by
-            ASC/DSC/MC (where they used to collide with those labels as the
-            wheel rotated). No degree label here, just the glyph - this ring
-            is tight on space, and the point is to show where the nodes sit
-            relative to the Moon and other inner planets, not to give exact
-            degrees (their tick-mark equivalent, if wanted, is still visible
-            out on the zodiac ring itself via the sign glyphs). */}
+        {/* Lunar nodes - drawn on whichever ring the current Moon itself is
+            currently sharing (its own ring in Current Sky mode; the
+            consolidated transiting ring in Explore Transits mode) rather
+            than out by ASC/DSC/MC (where they used to collide with those
+            labels as the wheel rotated). No degree label here, just the
+            glyph - this ring is tight on space, and the point is to show
+            where the nodes sit relative to the Moon and other current
+            planets, not to give exact degrees (their tick-mark equivalent,
+            if wanted, is still visible out on the zodiac ring itself via
+            the sign glyphs). */}
         {moon[0] &&
           (
             [
@@ -375,7 +740,7 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
                 ? Math.sign(deltaFromMoon || 1) * NODE_MOON_NUDGE_DEG
                 : 0;
             const angle = screenAngle(longitude, ascendant) + nudge;
-            const point = polarToPoint(CENTER_X, CENTER_Y, MOON_RING_RADIUS, angle);
+            const point = polarToPoint(CENTER_X, CENTER_Y, currentBodiesRadius, angle);
             return (
               <g
                 key={glyph}
@@ -421,7 +786,14 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
       </svg>
       {hovered && hoveredPlanet && (
         <div className="pointer-events-none absolute z-20" style={{ left: hovered.x + 14, top: hovered.y + 14 }}>
-          {hovered.body === "Sun" ? (
+          {inNatalMode ? (
+            // Natal Chart mode never uses Sun/Moon's specialized tooltips -
+            // those pull in live-only data (current space weather, upcoming
+            // lunar events relative to now) that has no sensible "at birth"
+            // equivalent, so every body gets the same plain glyph/sign/
+            // retrograde tooltip Explore Transits' own natal ring already uses.
+            <NatalPlanetTooltip planet={hoveredPlanet} />
+          ) : hovered.body === "Sun" ? (
             <SunTooltip longitude={hoveredPlanet.eclipticLongitude} location={location} now={now} />
           ) : hovered.body === "Moon" ? (
             <MoonTooltip longitude={hoveredPlanet.eclipticLongitude} location={location} now={now} />
@@ -433,11 +805,36 @@ export function SkyWheel({ planets, ascendant, descendant, midheaven, mode, onMo
       {hoveredNode && (
         <div className="pointer-events-none absolute z-20" style={{ left: hoveredNode.x + 14, top: hoveredNode.y + 14 }}>
           <LunarNodeTooltip
-            name={hoveredNode.node === "north" ? "North Node" : "South Node"}
+            name={
+              hoveredNode.node === "north"
+                ? inNatalMode
+                  ? "Natal North Node"
+                  : "North Node"
+                : inNatalMode
+                  ? "Natal South Node"
+                  : "South Node"
+            }
             glyph={hoveredNode.node === "north" ? LUNAR_NODE_GLYPHS.north : LUNAR_NODE_GLYPHS.south}
             longitude={hoveredNode.node === "north" ? lunarNodes.northNodeLongitude : lunarNodes.southNodeLongitude}
             color={LUNAR_NODE_COLOR}
           />
+        </div>
+      )}
+      {hoveredNatal && natalChart && (
+        <div className="pointer-events-none absolute z-20" style={{ left: hoveredNatal.x + 14, top: hoveredNatal.y + 14 }}>
+          {(() => {
+            const target = hoveredNatal.target;
+            return target.kind === "planet" ? (
+              <NatalPlanetTooltip planet={natalChart.planets.find((p) => p.body === target.body)!} />
+            ) : (
+              <LunarNodeTooltip
+                name={target.node === "north" ? "Natal North Node" : "Natal South Node"}
+                glyph={target.node === "north" ? LUNAR_NODE_GLYPHS.north : LUNAR_NODE_GLYPHS.south}
+                longitude={target.node === "north" ? natalChart.lunarNodes.northNodeLongitude : natalChart.lunarNodes.southNodeLongitude}
+                color={LUNAR_NODE_COLOR}
+              />
+            );
+          })()}
         </div>
       )}
     </div>

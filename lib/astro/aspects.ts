@@ -1,4 +1,4 @@
-import { getAllPlanetPositions, type CelestialBody } from "./positions";
+import { getAllPlanetPositions, type CelestialBody, type PlanetPosition } from "./positions";
 import { signedDelta } from "./math";
 
 export type AspectType = "conjunction" | "sextile" | "square" | "trine" | "opposition";
@@ -21,6 +21,20 @@ const ASPECT_DEFINITIONS: AspectDefinition[] = [
 ];
 const ORB_DEGREES = 6;
 
+/** The tightest aspect (if any, within ORB_DEGREES) between two longitudes. */
+function closestAspect(longitudeA: number, longitudeB: number): { def: AspectDefinition; orb: number } | null {
+  const separation = Math.abs(signedDelta(longitudeA, longitudeB));
+
+  let closest: { def: AspectDefinition; orb: number } | null = null;
+  for (const def of ASPECT_DEFINITIONS) {
+    const orb = Math.abs(separation - def.angle);
+    if (orb <= ORB_DEGREES && (!closest || orb < closest.orb)) {
+      closest = { def, orb };
+    }
+  }
+  return closest;
+}
+
 export interface Aspect {
   bodyA: CelestialBody;
   bodyB: CelestialBody;
@@ -42,20 +56,57 @@ export function getCurrentAspects(date: Date): Aspect[] {
 
   for (let i = 0; i < positions.length; i++) {
     for (let j = i + 1; j < positions.length; j++) {
-      const separation = Math.abs(signedDelta(positions[i].eclipticLongitude, positions[j].eclipticLongitude));
-
-      let closest: { def: AspectDefinition; orb: number } | null = null;
-      for (const def of ASPECT_DEFINITIONS) {
-        const orb = Math.abs(separation - def.angle);
-        if (orb <= ORB_DEGREES && (!closest || orb < closest.orb)) {
-          closest = { def, orb };
-        }
-      }
-
+      const closest = closestAspect(positions[i].eclipticLongitude, positions[j].eclipticLongitude);
       if (closest) {
         aspects.push({
           bodyA: positions[i].body,
           bodyB: positions[j].body,
+          type: closest.def.type,
+          glyph: closest.def.glyph,
+          orb: closest.orb,
+        });
+      }
+    }
+  }
+
+  return aspects.sort((a, b) => a.orb - b.orb);
+}
+
+export interface TransitAspect {
+  /** The currently-transiting body. */
+  transitingBody: CelestialBody;
+  /** The natal chart body it's aspecting. */
+  natalBody: CelestialBody;
+  type: AspectType;
+  glyph: string;
+  orb: number;
+}
+
+/**
+ * Aspects between transiting planets and a natal chart - the core of
+ * transit analysis ("what's activating my chart right now"). Unlike
+ * getCurrentAspects, this checks every transiting/natal pair *including* a
+ * body against its own natal placement (e.g. transiting Mars conjunct natal
+ * Mars is a real, meaningful transit - a "Mars return") - there's no
+ * self-comparison to skip the way there is within one set of positions.
+ *
+ * Takes already-computed positions rather than dates, since both sides
+ * already exist elsewhere in whatever tropical/sidereal mode was requested
+ * (the live sky, a stored natal chart) - comparing each side's longitude in
+ * its own date's version of that frame, with no separate cross-epoch
+ * adjustment, is exactly how real transit (Western) and Gochara (Vedic)
+ * analysis works.
+ */
+export function getTransitToNatalAspects(transitingPlanets: PlanetPosition[], natalPlanets: PlanetPosition[]): TransitAspect[] {
+  const aspects: TransitAspect[] = [];
+
+  for (const transiting of transitingPlanets) {
+    for (const natal of natalPlanets) {
+      const closest = closestAspect(transiting.eclipticLongitude, natal.eclipticLongitude);
+      if (closest) {
+        aspects.push({
+          transitingBody: transiting.body,
+          natalBody: natal.body,
           type: closest.def.type,
           glyph: closest.def.glyph,
           orb: closest.orb,

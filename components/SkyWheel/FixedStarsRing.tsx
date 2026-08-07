@@ -89,7 +89,19 @@ export function FixedStarsRing({ cx, cy, radius, ascendant, stars }: FixedStarsR
               fill={color}
               fillOpacity={0.9}
             >
-              {star.name}
+              {/* Two-word names (currently just "Deneb Algedi") wrap onto two
+                  lines - as one line they're wide enough to collide with a
+                  neighboring star's label at this same radius; every other
+                  name here is a single word and renders as before. */}
+              {star.name.includes(" ") ? (
+                star.name.split(" ").map((word, i) => (
+                  <tspan key={word} x={labelPoint.x} dy={i === 0 ? "-6" : "12"}>
+                    {word}
+                  </tspan>
+                ))
+              ) : (
+                star.name
+              )}
             </text>
           </g>
         );
